@@ -1,0 +1,180 @@
+.olama-transportation-wrap .olama-tab-content {
+    margin-top: 20px;
+}
+
+.olama-transportation-wrap .olama-card {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    padding: 24px;
+}
+
+.olama-transportation-toolbar {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 18px;
+}
+
+.olama-transportation-toolbar h2,
+.olama-transportation-toolbar h3 {
+    margin: 0;
+}
+
+.olama-transportation-wrap .button .dashicons {
+    font-size: 16px;
+    height: 16px;
+    line-height: 1.2;
+    width: 16px;
+}
+
+.olama-danger-button {
+    color: #d63638 !important;
+}
+
+.olama-status-pill {
+    border-radius: 999px;
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1;
+    padding: 5px 10px;
+}
+
+.olama-status-active {
+    background: #edfaef;
+    color: #18722d;
+}
+
+.olama-status-inactive {
+    background: #f6f7f7;
+    color: #646970;
+}
+
+.olama-modal {
+    background: rgba(0, 0, 0, 0.45);
+    display: none;
+    height: 100%;
+    left: 0;
+    overflow: auto;
+    position: fixed;
+    top: 0;
+    width: 100%;
+    z-index: 100000;
+}
+
+.olama-modal-content {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 10px 35px rgba(0, 0, 0, 0.25);
+    margin: 5% auto;
+    max-width: calc(100% - 40px);
+}
+
+.olama-bus-modal-content {
+    width: 640px;
+}
+
+.olama-modal-header,
+.olama-modal-footer {
+    align-items: center;
+    border-bottom: 1px solid #dcdcde;
+    display: flex;
+    justify-content: space-between;
+    padding: 16px 20px;
+}
+
+.olama-modal-footer {
+    border-bottom: 0;
+    border-top: 1px solid #dcdcde;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.olama-modal-header h2 {
+    margin: 0;
+}
+
+.olama-modal-close {
+    background: transparent;
+    border: 0;
+    color: #646970;
+    cursor: pointer;
+    font-size: 28px;
+    line-height: 1;
+}
+
+.olama-modal-body {
+    padding: 20px;
+}
+
+.olama-form-grid {
+    display: grid;
+    gap: 16px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.olama-form-grid p,
+.olama-modal-body p {
+    margin: 0 0 16px;
+}
+
+.olama-form-grid label,
+.olama-modal-body label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+.olama-assignment-content {
+    display: none;
+}
+
+.olama-capacity-info {
+    background: #f0f6fc;
+    border-left: 4px solid #0073aa;
+    margin-bottom: 20px;
+    padding: 14px;
+}
+
+.olama-capacity-track {
+    background: #ddd;
+    border-radius: 999px;
+    height: 18px;
+    margin-top: 10px;
+    max-width: 260px;
+    overflow: hidden;
+}
+
+#capacity-bar {
+    background: #0073aa;
+    height: 100%;
+    transition: width 0.3s ease;
+    width: 0;
+}
+
+.olama-empty-state {
+    color: #646970;
+    padding: 40px;
+    text-align: center;
+}
+
+.olama-empty-state .dashicons {
+    font-size: 48px;
+    height: 48px;
+    opacity: 0.35;
+    width: 48px;
+}
+
+@media (max-width: 782px) {
+    .olama-form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .olama-transportation-toolbar {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 12px;
+    }
+}
