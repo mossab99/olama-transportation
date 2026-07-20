@@ -167,6 +167,82 @@
     width: 48px;
 }
 
+.olama-metric-grid {
+    display: grid;
+    gap: 16px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin: 20px 0;
+}
+
+.olama-metric {
+    background: #fff;
+    border: 1px solid #dcdcde;
+    border-radius: 8px;
+    padding: 20px;
+}
+
+.olama-metric strong,
+.olama-metric span {
+    display: block;
+}
+
+.olama-metric strong {
+    color: #1a56db;
+    font-size: 30px;
+    margin-bottom: 6px;
+}
+
+.olama-inline-form {
+    align-items: end;
+    background: #f6f7f7;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 0 0 20px;
+    padding: 14px;
+}
+
+.olama-inline-form input,
+.olama-inline-form select {
+    min-width: 160px;
+}
+
+.olama-route-form .olama-stops-select {
+    min-height: 90px;
+    min-width: 260px;
+}
+
+.olama-settings-form {
+    display: grid;
+    gap: 14px;
+    max-width: 720px;
+}
+
+.olama-settings-form label {
+    display: grid;
+    gap: 6px;
+}
+
+.olama-settings-form input:not([type="checkbox"]),
+.olama-settings-form select {
+    width: 100%;
+}
+
+.olama-card-spaced {
+    margin-top: 20px;
+}
+
+.olama-shortage {
+    background: #fcf0f1 !important;
+    color: #b32d2e;
+    font-weight: 700;
+}
+
+.olama-operation-result {
+    font-weight: 600;
+    margin-top: 16px;
+}
+
 @media (max-width: 782px) {
     .olama-form-grid {
         grid-template-columns: 1fr;
@@ -176,5 +252,128 @@
         align-items: flex-start;
         flex-direction: column;
         gap: 12px;
+    }
+
+    .olama-metric-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+.olama-location-summary {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(150px, 1fr));
+    gap: 12px;
+    margin: 18px 0;
+}
+
+.olama-location-summary > div {
+    padding: 14px 16px;
+    border: 1px solid #dcdcde;
+    border-radius: 8px;
+    background: #f8fafc;
+}
+
+.olama-location-summary strong,
+.olama-location-summary span {
+    display: block;
+}
+
+.olama-location-summary strong {
+    color: #1a56db;
+    font-size: 24px;
+}
+
+.olama-family-location-tools {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    margin: 14px 0;
+}
+
+.olama-whatsapp-location-guide {
+    margin: 16px 0;
+    padding: 12px 14px;
+    border: 1px solid #b8d7c8;
+    border-radius: 8px;
+    background: #f0faf5;
+}
+
+.olama-whatsapp-location-guide summary {
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.olama-whatsapp-location-guide textarea {
+    display: block;
+    width: 100%;
+    min-height: 72px;
+    margin: 12px 0;
+    direction: rtl;
+}
+
+#copy-family-location-result {
+    margin-inline-start: 8px;
+    color: #11663f;
+}
+
+.olama-family-location-tools input[type="search"] {
+    width: min(420px, 70vw);
+}
+
+.olama-family-location-table-wrap {
+    overflow: auto;
+    max-height: 65vh;
+    border: 1px solid #dcdcde;
+}
+
+.olama-family-location-table {
+    border: 0;
+}
+
+.olama-family-location-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: #f6f7f7;
+}
+
+.olama-family-location-table td:first-child small,
+.family-location-result {
+    display: block;
+    margin-top: 4px;
+    color: #646970;
+}
+
+.family-location-result.is-success {
+    color: #11663f;
+}
+
+.family-location-result.is-error {
+    color: #b32d2e;
+}
+
+.olama-family-location-table .is-hidden {
+    display: none;
+}
+
+.olama-bulk-location-import {
+    margin-top: 22px;
+    padding-top: 16px;
+    border-top: 1px solid #dcdcde;
+}
+
+.olama-bulk-location-import summary {
+    cursor: pointer;
+    font-weight: 600;
+}
+
+@media (max-width: 782px) {
+    .olama-location-summary {
+        grid-template-columns: 1fr;
+    }
+
+    .olama-family-location-tools {
+        align-items: stretch;
+        flex-direction: column;
     }
 }

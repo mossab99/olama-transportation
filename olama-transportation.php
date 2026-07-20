@@ -2,19 +2,19 @@
 /**
  * Plugin Name: Olama Transportation
  * Plugin URI: https://olama.online
- * Description: Bus management and student transportation assignments for Olama School.
- * Version: 1.0.0
+ * Description: School transportation planning, stops, enrollment, fleet allocation, route optimization, and tracking integrations.
+ * Version: 2.2.0
  * Author: Olama
  * Text Domain: olama-transportation
  * Domain Path: /languages
- * Requires Plugins: olama-school
+ * Requires Plugins: olama-core, olama-school
  */
 
 if (!defined('ABSPATH')) {
     exit;
 }
 
-define('OLAMA_TRANSPORTATION_VERSION', '1.0.0');
+define('OLAMA_TRANSPORTATION_VERSION', '2.2.0');
 define('OLAMA_TRANSPORTATION_FILE', __FILE__);
 define('OLAMA_TRANSPORTATION_PATH', plugin_dir_path(__FILE__));
 define('OLAMA_TRANSPORTATION_URL', plugin_dir_url(__FILE__));

@@ -6,12 +6,126 @@ if (!defined('ABSPATH')) {
 
 class Olama_Transportation_Bus
 {
+    /**
+     * Refresh the local planning projection from Olama Core.
+     *
+     * Core owns all Oracle-derived fields. This table stores only the stable
+     * local bus ID used by route plans plus Olama-only planning overrides.
+     */
+    public static function refresh_from_core()
+    {
+        global $wpdb;
+
+        if (!function_exists('olama_core') || !method_exists(olama_core(), 'transport_master')) {
+            return new WP_Error('core_unavailable', __('Olama Core transportation master service is unavailable.', 'olama-transportation'));
+        }
+
+        $table = "{$wpdb->prefix}olama_transport_buses";
+        $rows = olama_core()->transport_master()->get_buses(false);
+        $seen = array();
+        $summary = array('created' => 0, 'updated' => 0, 'deactivated' => 0);
+
+        foreach ($rows as $row) {
+            $core_uid = sanitize_text_field((string) ($row['bus_uid'] ?? ''));
+            if ($core_uid === '') {
+                continue;
+            }
+            $seen[] = $core_uid;
+            $oracle_id = sanitize_text_field((string) ($row['oracle_bus_id'] ?? ''));
+            $government_number = sanitize_text_field((string) ($row['government_number'] ?? ''));
+            $existing = $wpdb->get_row($wpdb->prepare(
+                "SELECT id, planning_capacity FROM {$table} WHERE core_bus_uid = %s",
+                $core_uid
+            ), ARRAY_A);
+            if (!$existing && $oracle_id !== '') {
+                $existing = $wpdb->get_row($wpdb->prepare(
+                    "SELECT id, planning_capacity FROM {$table} WHERE oracle_bus_id = %s",
+                    $oracle_id
+                ), ARRAY_A);
+            }
+            if (!$existing && $government_number !== '') {
+                $existing = $wpdb->get_row($wpdb->prepare(
+                    "SELECT id, planning_capacity FROM {$table} WHERE government_number = %s",
+                    $government_number
+                ), ARRAY_A);
+            }
+            if (!$existing) {
+                $existing = $wpdb->get_row($wpdb->prepare(
+                    "SELECT id, planning_capacity FROM {$table} WHERE bus_number = %s ORDER BY id ASC LIMIT 1",
+                    sanitize_text_field((string) ($row['bus_number'] ?? ''))
+                ), ARRAY_A);
+            }
+            $registered_capacity = max(0, intval($row['registered_capacity'] ?? 0));
+            $master = array(
+                'core_bus_uid' => $core_uid,
+                'oracle_bus_id' => $oracle_id,
+                'bus_number' => sanitize_text_field((string) ($row['bus_number'] ?? '')),
+                'description' => sanitize_text_field((string) ($row['description'] ?? '')),
+                'model' => sanitize_text_field((string) ($row['model'] ?? '')),
+                'plate_number' => null,
+                'government_number' => $government_number ?: null,
+                'driver_license_number' => sanitize_text_field((string) ($row['driver_license_number'] ?? $row['plate_number'] ?? '')) ?: null,
+                'chassis_number' => sanitize_text_field((string) ($row['chassis_number'] ?? '')),
+                'passenger_capacity' => $registered_capacity,
+                'driver_employee_id' => sanitize_text_field((string) ($row['driver_employee_id'] ?? '')),
+                'driver_source_name' => sanitize_text_field((string) ($row['driver_employee_name'] ?? '')),
+                'companion_employee_id' => sanitize_text_field((string) ($row['companion_employee_id'] ?? '')),
+                'companion_source_name' => sanitize_text_field((string) ($row['companion_employee_name'] ?? '')),
+                'last_license_renewal' => self::sanitize_date($row['last_license_renewal'] ?? ''),
+                'license_expiry_date' => self::sanitize_date($row['next_license_renewal'] ?? ''),
+                'engine_capacity' => sanitize_text_field((string) ($row['engine_capacity'] ?? '')),
+                'fuel_type' => sanitize_text_field((string) ($row['fuel_type'] ?? '')),
+                'source_system' => 'olama_core',
+                'source_hash' => sanitize_text_field((string) ($row['source_hash'] ?? '')),
+                'last_synced_at' => self::sanitize_datetime($row['last_synced_at'] ?? ''),
+                'status' => !empty($row['is_active']) ? 'active' : 'inactive',
+                'updated_at' => current_time('mysql', true),
+            );
+
+            if ($existing) {
+                $wpdb->update($table, $master, array('id' => intval($existing['id'])));
+                $summary['updated']++;
+            } else {
+                $master['planning_capacity'] = $registered_capacity;
+                $master['created_at'] = current_time('mysql', true);
+                $wpdb->insert($table, $master);
+                $summary['created']++;
+            }
+            if ($wpdb->last_error) {
+                return new WP_Error('core_projection_failed', $wpdb->last_error);
+            }
+        }
+
+        if ($seen) {
+            $placeholders = implode(',', array_fill(0, count($seen), '%s'));
+            $summary['deactivated'] = intval($wpdb->query($wpdb->prepare(
+                "UPDATE {$table} SET status = 'inactive', updated_at = %s
+                 WHERE source_system = 'olama_core' AND core_bus_uid NOT IN ({$placeholders}) AND status <> 'inactive'",
+                array_merge(array(current_time('mysql', true)), $seen)
+            )));
+        }
+
+        if (class_exists('Olama_Transportation_Audit')) {
+            Olama_Transportation_Audit::record('core_refresh', 'buses', null, null, $summary);
+        }
+        return $summary;
+    }
+
     public static function get_buses()
     {
         global $wpdb;
         $table = "{$wpdb->prefix}olama_transport_buses";
+        $employees = "{$wpdb->prefix}olama_core_employees";
 
-        return $wpdb->get_results("SELECT * FROM $table ORDER BY bus_number ASC");
+        return $wpdb->get_results(
+            "SELECT b.*,
+                    COALESCE(d.full_name, NULLIF(b.driver_source_name, '')) AS driver_name,
+                    COALESCE(c.full_name, NULLIF(b.companion_source_name, '')) AS companion_name
+             FROM {$table} b
+             LEFT JOIN {$employees} d ON b.driver_employee_id = d.employee_id
+             LEFT JOIN {$employees} c ON b.companion_employee_id = c.employee_id
+             ORDER BY b.bus_number ASC"
+        );
     }
 
     public static function get_bus($id)
@@ -28,46 +142,38 @@ class Olama_Transportation_Bus
         $table = "{$wpdb->prefix}olama_transport_buses";
 
         $id = isset($data['id']) ? intval($data['id']) : 0;
+        if (!$id) {
+            return new WP_Error('core_master_required', __('Create buses in Oracle and synchronize them into Olama Core first.', 'olama-transportation'));
+        }
+        $existing_bus = self::get_bus($id);
+        if (!$existing_bus || empty($existing_bus->core_bus_uid)) {
+            return new WP_Error('invalid_core_bus', __('Only buses sourced from Olama Core can be managed here.', 'olama-transportation'));
+        }
         $bus_data = array(
-            'bus_number'          => sanitize_text_field($data['bus_number'] ?? ''),
-            'plate_number'        => sanitize_text_field($data['plate_number'] ?? ''),
-            'passenger_capacity'  => intval($data['passenger_capacity'] ?? 0),
+            'planning_capacity'   => intval($data['planning_capacity'] ?? $existing_bus->passenger_capacity),
             'driver_user_id'      => !empty($data['driver_user_id']) ? intval($data['driver_user_id']) : null,
             'companion_user_id'   => !empty($data['companion_user_id']) ? intval($data['companion_user_id']) : null,
-            'license_expiry_date' => !empty($data['license_expiry_date']) ? self::sanitize_date($data['license_expiry_date']) : null,
-            'engine_capacity'     => sanitize_text_field($data['engine_capacity'] ?? ''),
-            'fuel_type'           => sanitize_text_field($data['fuel_type'] ?? ''),
-            'status'              => sanitize_text_field($data['status'] ?? 'active'),
+            'accessibility'       => !empty($data['accessibility']) ? 1 : 0,
+            'tracking_provider'   => sanitize_key($data['tracking_provider'] ?? $existing_bus->tracking_provider),
+            'tracking_device_id'  => sanitize_text_field($data['tracking_device_id'] ?? $existing_bus->tracking_device_id),
+            'updated_at'          => current_time('mysql', true),
         );
 
-        if (empty($bus_data['bus_number']) || empty($bus_data['plate_number'])) {
-            return new WP_Error('missing_data', __('Bus number and Plate number are required.', 'olama-transportation'));
+        if ($bus_data['planning_capacity'] <= 0 || $bus_data['planning_capacity'] > intval($existing_bus->passenger_capacity)) {
+            return new WP_Error('invalid_capacity', __('Planning capacity must be greater than zero and cannot exceed the registered Core capacity.', 'olama-transportation'));
         }
 
-        if ($bus_data['passenger_capacity'] <= 0) {
-            return new WP_Error('invalid_capacity', __('Passenger capacity must be greater than zero.', 'olama-transportation'));
+        $before = self::get_bus($id);
+        $updated = $wpdb->update($table, $bus_data, array('id' => $id));
+        if ($updated !== false && class_exists('Olama_Transportation_Audit')) {
+            Olama_Transportation_Audit::record('update_planning_profile', 'bus', $id, $before, self::get_bus($id));
         }
-
-        if ($id > 0) {
-            $updated = $wpdb->update($table, $bus_data, array('id' => $id));
-            return $updated !== false ? $id : new WP_Error('db_error', __('Failed to update bus.', 'olama-transportation'));
-        }
-
-        $exists = $wpdb->get_var($wpdb->prepare("SELECT id FROM $table WHERE plate_number = %s", $bus_data['plate_number']));
-        if ($exists) {
-            return new WP_Error('duplicate_plate', __('Plate number already exists.', 'olama-transportation'));
-        }
-
-        $inserted = $wpdb->insert($table, $bus_data);
-        return $inserted ? $wpdb->insert_id : new WP_Error('db_error', __('Failed to save bus.', 'olama-transportation'));
+        return $updated !== false ? $id : new WP_Error('db_error', __('Failed to update bus planning settings.', 'olama-transportation'));
     }
 
     public static function delete_bus($id)
     {
-        global $wpdb;
-        $table = "{$wpdb->prefix}olama_transport_buses";
-
-        return $wpdb->delete($table, array('id' => intval($id)));
+        return new WP_Error('core_master_required', __('Buses are mastered in Oracle and Olama Core; they cannot be deleted from Transportation.', 'olama-transportation'));
     }
 
     public static function get_available_drivers()
@@ -107,7 +213,7 @@ class Olama_Transportation_Bus
         foreach ($student_ids as $student_id) {
             $student_id = intval($student_id);
             $student_uid = $wpdb->get_var($wpdb->prepare(
-                "SELECT student_uid FROM {$wpdb->prefix}olama_students WHERE id = %d",
+                "SELECT student_uid FROM {$wpdb->prefix}olama_core_students WHERE id = %d",
                 $student_id
             ));
 
@@ -169,7 +275,7 @@ class Olama_Transportation_Bus
         $table = "{$wpdb->prefix}olama_student_bus_assignments";
 
         $student_uid = $wpdb->get_var($wpdb->prepare(
-            "SELECT student_uid FROM {$wpdb->prefix}olama_students WHERE id = %d",
+            "SELECT student_uid FROM {$wpdb->prefix}olama_core_students WHERE id = %d",
             $student_id
         ));
 
@@ -191,18 +297,21 @@ class Olama_Transportation_Bus
     public static function get_bus_students($bus_id, $academic_year_id)
     {
         global $wpdb;
+        $study_year = self::study_year($academic_year_id);
+        if (!$study_year) {
+            return array();
+        }
 
         return $wpdb->get_results($wpdb->prepare("
-            SELECT s.*, a.id as assignment_id, a.pickup_location, a.dropoff_location,
-                   a.notes, a.assigned_at, sec.section_name, g.grade_name
+            SELECT s.*, a.id AS assignment_id, a.pickup_location, a.dropoff_location,
+                   a.notes, a.assigned_at, sy.section_name, sy.class_name AS grade_name
             FROM {$wpdb->prefix}olama_student_bus_assignments a
-            JOIN {$wpdb->prefix}olama_students s ON a.student_uid = s.student_uid
-            LEFT JOIN {$wpdb->prefix}olama_student_enrollment e ON s.student_uid = e.student_uid AND e.academic_year_id = %d
-            LEFT JOIN {$wpdb->prefix}olama_sections sec ON e.section_id = sec.id
-            LEFT JOIN {$wpdb->prefix}olama_grades g ON sec.grade_id = g.id
+            JOIN {$wpdb->prefix}olama_core_students s ON a.student_uid = s.student_uid
+            LEFT JOIN {$wpdb->prefix}olama_core_student_years sy
+                ON s.student_uid = sy.student_uid AND sy.study_year = %s
             WHERE a.bus_id = %d AND a.academic_year_id = %d
             ORDER BY s.student_name ASC
-        ", $academic_year_id, $bus_id, $academic_year_id));
+        ", $study_year, $bus_id, $academic_year_id));
     }
 
     public static function get_student_bus($student_id, $academic_year_id)
@@ -210,10 +319,11 @@ class Olama_Transportation_Bus
         global $wpdb;
 
         return $wpdb->get_row($wpdb->prepare("
-            SELECT a.*, b.bus_number, b.plate_number, b.passenger_capacity
+            SELECT a.*, b.bus_number, b.government_number,
+                   b.driver_license_number, b.passenger_capacity
             FROM {$wpdb->prefix}olama_student_bus_assignments a
             JOIN {$wpdb->prefix}olama_transport_buses b ON a.bus_id = b.id
-            JOIN {$wpdb->prefix}olama_students s ON a.student_uid = s.student_uid
+            JOIN {$wpdb->prefix}olama_core_students s ON a.student_uid = s.student_uid
             WHERE s.id = %d AND a.academic_year_id = %d
         ", $student_id, $academic_year_id));
     }
@@ -233,7 +343,7 @@ class Olama_Transportation_Bus
             WHERE bus_id = %d AND academic_year_id = %d
         ", $bus_id, $academic_year_id));
 
-        $total = intval($bus->passenger_capacity);
+        $total = intval($bus->planning_capacity ?: $bus->passenger_capacity);
         $assigned = intval($assigned_count);
 
         return array(
@@ -246,11 +356,30 @@ class Olama_Transportation_Bus
 
     private static function sanitize_date($date)
     {
+        if (empty($date) || $date === '0000-00-00') {
+            return null;
+        }
         if (class_exists('Olama_School_Helpers') && method_exists('Olama_School_Helpers', 'sanitize_date')) {
-            return Olama_School_Helpers::sanitize_date($date);
+            $sanitized = Olama_School_Helpers::sanitize_date($date);
+            return $sanitized ?: null;
         }
 
         $timestamp = strtotime((string) $date);
         return $timestamp ? gmdate('Y-m-d', $timestamp) : null;
+    }
+
+    private static function sanitize_datetime($date)
+    {
+        $timestamp = strtotime((string) $date);
+        return $timestamp ? gmdate('Y-m-d H:i:s', $timestamp) : current_time('mysql', true);
+    }
+
+    public static function study_year($academic_year_id)
+    {
+        if (!class_exists('Olama_School_Academic')) {
+            return '';
+        }
+        $year = Olama_School_Academic::get_year(intval($academic_year_id));
+        return $year ? sanitize_text_field((string) $year->year_name) : '';
     }
 }

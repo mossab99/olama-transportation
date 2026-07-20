@@ -54,10 +54,15 @@ class Olama_Transportation_Admin
             wp_die(esc_html__('Unauthorized access', 'olama-transportation'));
         }
 
-        $active_tab = isset($_GET['tab']) ? sanitize_key(wp_unslash($_GET['tab'])) : 'buses';
+        $active_tab = isset($_GET['tab']) ? sanitize_key(wp_unslash($_GET['tab'])) : 'overview';
         $allowed_tabs = array(
+            'overview'    => Olama_School_Helpers::translate('Overview'),
             'buses'       => Olama_School_Helpers::translate('Buses'),
             'assignments' => Olama_School_Helpers::translate('Student Assignments'),
+            'planning'    => Olama_School_Helpers::translate('Area Planning'),
+            'routes'      => Olama_School_Helpers::translate('Routes'),
+            'import'      => Olama_School_Helpers::translate('Family Locations'),
+            'settings'    => Olama_School_Helpers::translate('Settings'),
         );
 
         if (!isset($allowed_tabs[$active_tab])) {
@@ -70,15 +75,33 @@ class Olama_Transportation_Admin
         $years = array();
         $selected_year_id = 0;
         $selected_bus_id = 0;
+        $active_year = Olama_School_Academic::get_active_year();
+        $selected_year_id = isset($_GET['academic_year_id']) ? intval($_GET['academic_year_id']) : ($active_year ? $active_year->id : 0);
+        $years = Olama_School_Academic::get_years();
+        $summary = array();
+        $areas = array();
+        $family_stops = array();
+        $stops = array();
+        $routes = array();
+        $registered_families = array();
+        $settings = get_option('olama_transportation_settings', array());
 
         if ($active_tab === 'buses') {
             $drivers = Olama_Transportation_Bus::get_available_drivers();
             $companions = Olama_Transportation_Bus::get_available_companions();
-        } else {
-            $years = Olama_School_Academic::get_years();
-            $active_year = Olama_School_Academic::get_active_year();
-            $selected_year_id = isset($_GET['academic_year_id']) ? intval($_GET['academic_year_id']) : ($active_year ? $active_year->id : 0);
+        } elseif ($active_tab === 'assignments') {
             $selected_bus_id = isset($_GET['bus_id']) ? intval($_GET['bus_id']) : 0;
+        }
+        if (in_array($active_tab, array('overview', 'planning'), true) && $selected_year_id) {
+            $summary = Olama_Transportation_Planning::report_summary($selected_year_id);
+            $areas = Olama_Transportation_Repository::list_items('areas', array('per_page' => 500));
+            $family_stops = Olama_Transportation_Repository::list_items('family-stops', array('per_page' => 100));
+        }
+        if ($active_tab === 'routes') {
+            $routes = Olama_Transportation_Routes::list_routes(array('academic_year_id' => $selected_year_id));
+            $stops = Olama_Transportation_Repository::list_items('stops', array('per_page' => 500, 'status' => 'active'));
+        } elseif ($active_tab === 'import' && $selected_year_id) {
+            $registered_families = Olama_Transportation_Family_Locations::registered_families($selected_year_id);
         }
 
         include OLAMA_TRANSPORTATION_PATH . 'admin-views/transportation.php';
@@ -107,6 +130,8 @@ class Olama_Transportation_Admin
         wp_localize_script('olama-transportation-admin', 'olamaTransportation', array(
             'ajaxUrl' => admin_url('admin-ajax.php'),
             'nonce'   => wp_create_nonce('olama_admin_nonce'),
+            'restUrl' => esc_url_raw(rest_url('olama-transportation/v1/')),
+            'restNonce' => wp_create_nonce('wp_rest'),
             'i18n'    => array(
                 'saving'                 => Olama_School_Helpers::translate('Saving...'),
                 'saveBus'                => Olama_School_Helpers::translate('Save Bus'),
@@ -119,6 +144,8 @@ class Olama_Transportation_Admin
                 'assignSelectedConfirm'  => Olama_School_Helpers::translate('Assign selected students to this bus?'),
                 'unassignStudentConfirm' => Olama_School_Helpers::translate('Unassign this student from the bus?'),
                 'unassign'               => Olama_School_Helpers::translate('Unassign'),
+                'saved'                  => Olama_School_Helpers::translate('Saved successfully'),
+                'failed'                 => Olama_School_Helpers::translate('Operation failed'),
             ),
         ));
     }

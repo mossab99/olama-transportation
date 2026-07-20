@@ -20,17 +20,18 @@ final class Olama_Transportation_Plugin
 
     public static function activate()
     {
-        if (!class_exists('Olama_School_DB') || !class_exists('Olama_School_Permissions')) {
+        if (!self::dependencies_available_static()) {
             deactivate_plugins(plugin_basename(OLAMA_TRANSPORTATION_FILE));
             wp_die(
-                esc_html__('Olama Transportation requires the Olama School plugin to be installed and active.', 'olama-transportation'),
+                esc_html__('Olama Transportation requires Olama Core and Olama School to be installed and active.', 'olama-transportation'),
                 esc_html__('Plugin dependency missing', 'olama-transportation'),
                 array('back_link' => true)
             );
         }
 
         Olama_Transportation_DB::install();
-        Olama_School_Permissions::add_capabilities();
+        self::default_settings();
+        self::remove_legacy_oracle_settings();
         update_option('olama_transportation_db_version', OLAMA_TRANSPORTATION_VERSION);
     }
 
@@ -49,12 +50,24 @@ final class Olama_Transportation_Plugin
         if (!$this->available) {
             return;
         }
+        self::remove_legacy_oracle_settings();
 
         require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-bus.php';
+        require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-audit.php';
+        require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-repository.php';
+        require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-family-locations.php';
+        require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-importer.php';
+        require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-planning.php';
+        require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-routes.php';
+        require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-optimizer.php';
+        require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-rest.php';
         require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-ajax.php';
         require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-admin.php';
 
+        add_action('olama_core_transport_master_updated', array('Olama_Transportation_Bus', 'refresh_from_core'), 10, 0);
         add_filter('olama_school_student_bus', array($this, 'get_student_bus'), 10, 3);
+        $rest = new Olama_Transportation_REST();
+        add_action('rest_api_init', array($rest, 'register'));
 
         if (is_admin()) {
             new Olama_Transportation_Admin();
@@ -65,7 +78,15 @@ final class Olama_Transportation_Plugin
 
     private function dependencies_available()
     {
-        return defined('OLAMA_SCHOOL_FILE')
+        return self::dependencies_available_static();
+    }
+
+    private static function dependencies_available_static()
+    {
+        return defined('OLAMA_CORE_VERSION')
+            && function_exists('olama_core')
+            && method_exists(olama_core(), 'transport_master')
+            && defined('OLAMA_SCHOOL_FILE')
             && class_exists('Olama_School_DB')
             && class_exists('Olama_School_Permissions')
             && class_exists('Olama_School_Academic')
@@ -79,7 +100,8 @@ final class Olama_Transportation_Plugin
         }
 
         Olama_Transportation_DB::install();
-        Olama_School_Permissions::add_capabilities();
+        self::default_settings();
+        self::remove_legacy_oracle_settings();
         update_option('olama_transportation_db_version', OLAMA_TRANSPORTATION_VERSION);
     }
 
@@ -90,7 +112,7 @@ final class Olama_Transportation_Plugin
         }
 
         echo '<div class="notice notice-error"><p>'
-            . esc_html__('Olama Transportation is inactive because Olama School is not active.', 'olama-transportation')
+            . esc_html__('Olama Transportation is inactive because Olama Core or Olama School is not active.', 'olama-transportation')
             . '</p></div>';
     }
 
@@ -123,7 +145,7 @@ final class Olama_Transportation_Plugin
         $cards[] = array(
             'id'          => 'olama-transportation',
             'label'       => __('Transportation', 'olama-transportation'),
-            'description' => __('Bus records, drivers, companions, capacity, and student bus assignments.', 'olama-transportation'),
+            'description' => __('Fleet, family stops, enrollment, area demand, route optimization, approvals, and tracking integrations.', 'olama-transportation'),
             'icon'        => 'dashicons-car',
             'accent'      => '#1a56db',
             'accent_rgb'  => '26,86,219',
@@ -147,9 +169,53 @@ final class Olama_Transportation_Plugin
                     'capability' => 'olama_access_transport_mgmt',
                     'color'      => '#1a56db',
                 ),
+                array(
+                    'id'         => 'transportation.planning',
+                    'label'      => __('Planning', 'olama-transportation'),
+                    'icon'       => 'dashicons-location-alt',
+                    'url'        => admin_url('admin.php?page=olama-transportation&tab=planning'),
+                    'capability' => 'olama_access_transport_mgmt',
+                    'color'      => '#1a56db',
+                ),
+                array(
+                    'id'         => 'transportation.import',
+                    'label'      => __('Family Locations', 'olama-transportation'),
+                    'icon'       => 'dashicons-upload',
+                    'url'        => admin_url('admin.php?page=olama-transportation&tab=import'),
+                    'capability' => 'olama_manage_transport_buses',
+                    'color'      => '#1a56db',
+                ),
             ),
         );
 
         return $cards;
+    }
+
+    private static function default_settings()
+    {
+        if (get_option('olama_transportation_settings', null) !== null) {
+            return;
+        }
+        add_option('olama_transportation_settings', array(
+            'optimizer_provider' => 'manual',
+            'traccar_enabled' => 0,
+            'school_location' => array('latitude' => 31.9539, 'longitude' => 35.9106),
+            'service_bounds' => array('south' => 29, 'north' => 34, 'west' => 34, 'east' => 40),
+        ), '', false);
+    }
+
+    private static function remove_legacy_oracle_settings()
+    {
+        $settings = get_option('olama_transportation_settings', array());
+        $changed = false;
+        foreach (array('oracle_api_url', 'oracle_api_key') as $legacy_key) {
+            if (array_key_exists($legacy_key, $settings)) {
+                unset($settings[$legacy_key]);
+                $changed = true;
+            }
+        }
+        if ($changed) {
+            update_option('olama_transportation_settings', $settings, false);
+        }
     }
 }

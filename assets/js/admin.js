@@ -52,8 +52,10 @@
             $('#bus-modal-title').text(t('editBus'));
             $('#bus-id').val(bus.id);
             $('#bus-number').val(bus.bus_number);
-            $('#bus-plate-number').val(bus.plate_number);
+            $('#bus-government-number').val(bus.government_number);
+            $('#bus-driver-license-number').val(bus.driver_license_number);
             $('#bus-capacity').val(bus.passenger_capacity);
+            $('#bus-planning-capacity').val(bus.planning_capacity || bus.passenger_capacity);
             $('#bus-license-expiry').val(bus.license_expiry_date ? olamaFormatDate(bus.license_expiry_date) : '');
             $('#bus-driver-id').val(bus.driver_user_id);
             $('#bus-companion-id').val(bus.companion_user_id);
@@ -287,4 +289,183 @@
 
         loadBusAssignments();
     }
+
+    function rest(path, options) {
+        options = options || {};
+        options.headers = options.headers || {};
+        options.headers['X-WP-Nonce'] = olamaTransportation.restNonce;
+        if (options.body && !(options.body instanceof FormData)) {
+            options.headers['Content-Type'] = 'application/json';
+            options.body = JSON.stringify(options.body);
+        }
+        return window.fetch(olamaTransportation.restUrl + path, options).then(function (response) {
+            return response.json().then(function (payload) {
+                if (!response.ok) {
+                    throw new Error(payload.message || t('failed'));
+                }
+                return payload;
+            });
+        });
+    }
+
+    function objectFromForm(form) {
+        var output = {};
+        new FormData(form).forEach(function (value, key) {
+            if (key.slice(-2) === '[]') {
+                key = key.slice(0, -2);
+                output[key] = output[key] || [];
+                output[key].push(value);
+            } else {
+                output[key] = value;
+            }
+        });
+        return output;
+    }
+
+    $(document).on('change', '.olama-year-navigation', function () {
+        var url = new URL(window.location.href);
+        url.searchParams.set('academic_year_id', $(this).val());
+        window.location.href = url.toString();
+    });
+
+    $('#area-form').on('submit', function (event) {
+        event.preventDefault();
+        rest('areas', {method: 'POST', body: objectFromForm(this)})
+            .then(function () { window.location.reload(); })
+            .catch(function (error) { alert(error.message); });
+    });
+
+    $('#route-form').on('submit', function (event) {
+        event.preventDefault();
+        rest('routes', {method: 'POST', body: objectFromForm(this)})
+            .then(function () { window.location.reload(); })
+            .catch(function (error) { alert(error.message); });
+    });
+
+    $(document).on('click', '.olama-optimize-route', function () {
+        var id = $(this).data('id');
+        $(this).prop('disabled', true);
+        rest('routes/' + id + '/optimize', {method: 'POST'})
+            .then(function () { window.location.reload(); })
+            .catch(function (error) { alert(error.message); window.location.reload(); });
+    });
+
+    $(document).on('click', '.olama-publish-route', function () {
+        if (!window.confirm('Publish this immutable route version?')) {
+            return;
+        }
+        rest('routes/' + $(this).data('id') + '/publish', {method: 'POST'})
+            .then(function () { window.location.reload(); })
+            .catch(function (error) { alert(error.message); });
+    });
+
+    function filterFamilyLocations() {
+        var query = ($('#family-location-search').val() || '').toLowerCase().trim();
+        var missingOnly = $('#family-location-missing-only').is(':checked');
+        $('[data-family-location-row]').each(function () {
+            var $row = $(this);
+            var matchesSearch = !query || $row.text().toLowerCase().indexOf(query) !== -1;
+            var matchesMissing = !missingOnly || $row.attr('data-has-location') !== '1';
+            $row.toggle(matchesSearch && matchesMissing);
+        });
+    }
+
+    $('#family-location-search').on('input', filterFamilyLocations);
+    $('#family-location-missing-only').on('change', filterFamilyLocations);
+
+    $('#copy-family-location-template').on('click', function () {
+        var text = $('#family-location-whatsapp-template').val();
+        var $result = $('#copy-family-location-result');
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(text)
+                .then(function () { $result.text('Copied.'); })
+                .catch(function () { $result.text('Could not copy automatically.'); });
+            return;
+        }
+        var field = document.getElementById('family-location-whatsapp-template');
+        field.focus();
+        field.select();
+        $result.text(document.execCommand('copy') ? 'Copied.' : 'Select and copy the message.');
+    });
+
+    $(document).on('keydown', '.family-location-input', function (event) {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            $(this).closest('tr').find('.olama-save-family-location').trigger('click');
+        }
+    });
+
+    $(document).on('click', '.olama-save-family-location', function () {
+        var $button = $(this);
+        var $row = $button.closest('tr');
+        var $input = $row.find('.family-location-input');
+        var $result = $row.find('.family-location-result');
+        var location = $input.val().trim();
+
+        $result.removeClass('is-success is-error').text('');
+        if (!location) {
+            $result.addClass('is-error').text('Paste coordinates or a Google Maps link.');
+            return;
+        }
+
+        $button.prop('disabled', true);
+        $result.text(t('saving'));
+        rest('family-locations/' + encodeURIComponent($button.data('family-uid')), {
+            method: 'PUT',
+            body: {location: location}
+        }).then(function (response) {
+            $input.val(response.normalized_location);
+            $row.attr('data-has-location', '1');
+            $row.find('.olama-status-pill')
+                .attr('class', 'olama-status-pill olama-status-needs_review')
+                .text('needs_review');
+            $row.find('.olama-view-family-location')
+                .attr('href', response.map_url)
+                .removeClass('is-hidden');
+            $result.addClass('is-success').text(response.message);
+            $button.prop('disabled', false);
+            filterFamilyLocations();
+        }).catch(function (error) {
+            $result.addClass('is-error').text(error.message);
+            $button.prop('disabled', false);
+        });
+    });
+
+    $('#family-stop-import-form').on('submit', function (event) {
+        event.preventDefault();
+        var form = this;
+        $('#import-result').text(t('saving'));
+        rest('imports/family-stops', {method: 'POST', body: new FormData(form)})
+            .then(function (result) {
+                $('#import-result').text(
+                    'Rows: ' + result.row_count +
+                    ', matched: ' + result.counts.matched +
+                    ', review: ' + result.counts.needs_review +
+                    ', invalid: ' + result.counts.invalid
+                );
+            })
+            .catch(function (error) { $('#import-result').text(error.message); });
+    });
+
+    $('#transport-settings-form').on('submit', function (event) {
+        event.preventDefault();
+        var values = objectFromForm(this);
+        values.traccar_enabled = values.traccar_enabled ? 1 : 0;
+        rest('settings', {method: 'PUT', body: values})
+            .then(function () { $('#settings-result').text(t('saved')); })
+            .catch(function (error) { $('#settings-result').text(error.message); });
+    });
+
+    $('#refresh-core-buses').on('click', function () {
+        var $button = $(this).prop('disabled', true);
+        rest('core/refresh-buses', {method: 'POST'})
+            .then(function (result) {
+                $('#settings-result').text('Created: ' + result.created + ', updated: ' + result.updated + ', deactivated: ' + result.deactivated);
+                window.location.reload();
+            })
+            .catch(function (error) {
+                $('#settings-result').text(error.message);
+                $button.prop('disabled', false);
+            });
+    });
 })(jQuery);

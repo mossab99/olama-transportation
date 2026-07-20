@@ -60,6 +60,9 @@ class Olama_Transportation_Ajax
         $this->require_capability('olama_manage_transport_buses');
 
         $result = Olama_Transportation_Bus::delete_bus(isset($_POST['id']) ? intval($_POST['id']) : 0);
+        if (is_wp_error($result)) {
+            wp_send_json_error($result->get_error_message());
+        }
         if (!$result) {
             wp_send_json_error(__('Failed to delete bus', 'olama-transportation'));
         }
@@ -139,21 +142,23 @@ class Olama_Transportation_Ajax
         }
 
         global $wpdb;
+        $study_year = Olama_Transportation_Bus::study_year($academic_year_id);
+        if ($study_year === '') {
+            wp_send_json_error(__('The selected academic year could not be mapped to Olama Core.', 'olama-transportation'));
+        }
         $students = $wpdb->get_results($wpdb->prepare("
-            SELECT s.*, sec.section_name, g.grade_name
-            FROM {$wpdb->prefix}olama_students s
-            JOIN {$wpdb->prefix}olama_student_enrollment e ON s.student_uid = e.student_uid
-            JOIN {$wpdb->prefix}olama_sections sec ON e.section_id = sec.id
-            JOIN {$wpdb->prefix}olama_grades g ON sec.grade_id = g.id
+            SELECT s.*, sy.section_name, sy.class_name AS grade_name
+            FROM {$wpdb->prefix}olama_core_students s
+            JOIN {$wpdb->prefix}olama_core_student_years sy ON s.student_uid = sy.student_uid
             LEFT JOIN {$wpdb->prefix}olama_student_bus_assignments a
                 ON s.student_uid = a.student_uid AND a.academic_year_id = %d
-            WHERE e.academic_year_id = %d AND a.id IS NULL
-            ORDER BY g.id, sec.id, s.student_name
-        ", $academic_year_id, $academic_year_id));
+            WHERE sy.study_year = %s AND a.id IS NULL
+            ORDER BY sy.class_name, sy.section_name, s.student_name
+        ", $academic_year_id, $study_year));
 
         $total_enrolled = $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM {$wpdb->prefix}olama_student_enrollment WHERE academic_year_id = %d",
-            $academic_year_id
+            "SELECT COUNT(*) FROM {$wpdb->prefix}olama_core_student_years WHERE study_year = %s",
+            $study_year
         ));
         $total_assigned = $wpdb->get_var($wpdb->prepare(
             "SELECT COUNT(*) FROM {$wpdb->prefix}olama_student_bus_assignments WHERE academic_year_id = %d",
