@@ -58,6 +58,9 @@ final class Olama_Transportation_Plugin
         require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-family-locations.php';
         require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-importer.php';
         require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-planning.php';
+        require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-area-sync.php';
+        require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-map-data.php';
+        require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-geographic-planning.php';
         require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-routes.php';
         require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-optimizer.php';
         require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-rest.php';
@@ -65,6 +68,7 @@ final class Olama_Transportation_Plugin
         require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-admin.php';
 
         add_action('olama_core_transport_master_updated', array('Olama_Transportation_Bus', 'refresh_from_core'), 10, 0);
+        add_action('olama_core_transport_master_updated', array('Olama_Transportation_Area_Sync', 'refresh_from_core'), 11, 0);
         add_filter('olama_school_student_bus', array($this, 'get_student_bus'), 10, 3);
         $rest = new Olama_Transportation_REST();
         add_action('rest_api_init', array($rest, 'register'));

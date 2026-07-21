@@ -132,7 +132,9 @@ class Olama_Transportation_Importer
 
             $family_stop_id = null;
             if ($status === 'matched') {
+                $core_family = function_exists('olama_core') ? olama_core()->families()->get_by_oracle_id($family_id) : null;
                 $record = array(
+                    'family_uid' => $core_family['family_uid'] ?? null,
                     'oracle_family_id' => $family_id,
                     'latitude' => $lat,
                     'longitude' => $lng,
@@ -145,11 +147,20 @@ class Olama_Transportation_Importer
                     'notes' => sanitize_textarea_field($row['notes'] ?? ''),
                     'updated_at' => $now,
                 );
-                $existing = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$stops} WHERE oracle_family_id = %s", $family_id));
+                $existing = $wpdb->get_row($wpdb->prepare("SELECT id,major_area_id FROM {$stops} WHERE oracle_family_id = %s", $family_id), ARRAY_A);
                 if ($existing) {
-                    $wpdb->update($stops, $record, array('id' => $existing));
-                    $family_stop_id = intval($existing);
+                    // Preserve an existing reviewed/manual classification.
+                    if (!empty($existing['major_area_id'])) {
+                        $record['major_area_id'] = (int) $existing['major_area_id'];
+                    } elseif ($core_family && class_exists('Olama_Transportation_Area_Sync')) {
+                        $record['major_area_id'] = Olama_Transportation_Area_Sync::resolve_for_family($core_family, $record['area_text']) ?: null;
+                    }
+                    $wpdb->update($stops, $record, array('id' => $existing['id']));
+                    $family_stop_id = intval($existing['id']);
                 } else {
+                    if ($core_family && class_exists('Olama_Transportation_Area_Sync')) {
+                        $record['major_area_id'] = Olama_Transportation_Area_Sync::resolve_for_family($core_family, $record['area_text']) ?: null;
+                    }
                     $record['created_at'] = $now;
                     $wpdb->insert($stops, $record);
                     $family_stop_id = $wpdb->insert_id;

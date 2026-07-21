@@ -74,11 +74,20 @@ class Olama_Transportation_Family_Locations
         }
 
         $table = Olama_Transportation_DB::table('family_stops');
-        $existing_id = intval($wpdb->get_var($wpdb->prepare(
-            "SELECT id FROM {$table} WHERE family_uid = %s OR oracle_family_id = %s ORDER BY id LIMIT 1",
+        $existing_stop = $wpdb->get_row($wpdb->prepare(
+            "SELECT id, major_area_id FROM {$table} WHERE family_uid = %s OR oracle_family_id = %s ORDER BY id LIMIT 1",
             $family_uid,
             $family['oracle_family_id']
-        )));
+        ), ARRAY_A);
+        $existing_id = intval($existing_stop['id'] ?? 0);
+        $resolved_area_id = class_exists('Olama_Transportation_Area_Sync')
+            ? Olama_Transportation_Area_Sync::resolve_for_family($family, $family['trans_region_name'])
+            : 0;
+        // A current assignment may have been reviewed manually. Preserve it;
+        // automatic Core/text resolution only fills an unassigned stop.
+        $major_area_id = !empty($existing_stop['major_area_id'])
+            ? (int) $existing_stop['major_area_id']
+            : ($resolved_area_id ?: null);
         $maps_url = 'https://www.google.com/maps?q='
             . rawurlencode($coordinates['latitude'] . ',' . $coordinates['longitude']);
         $saved = Olama_Transportation_Repository::save_item('family-stops', array(
@@ -89,6 +98,7 @@ class Olama_Transportation_Family_Locations
             'maps_url' => $maps_url,
             'address_text' => $family['family_address'] ?: $family['address'],
             'area_text' => $family['trans_region_name'],
+            'major_area_id' => $major_area_id,
             'source' => 'whatsapp_manual',
             'verification_status' => 'needs_review',
             'notes' => sanitize_textarea_field($notes),
@@ -153,7 +163,7 @@ class Olama_Transportation_Family_Locations
         );
     }
 
-    private static function within_service_bounds($latitude, $longitude)
+    public static function within_service_bounds($latitude, $longitude)
     {
         $settings = get_option('olama_transportation_settings', array());
         $bounds = $settings['service_bounds'] ?? array('south' => 29, 'north' => 34, 'west' => 34, 'east' => 40);

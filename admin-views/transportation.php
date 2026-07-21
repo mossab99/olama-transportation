@@ -49,51 +49,70 @@ $translate = array('Olama_School_Helpers', 'translate');
         <?php endif; ?>
 
         <?php if ($active_tab === 'planning'): ?>
-            <div class="olama-card">
-                <div class="olama-transportation-toolbar">
-                    <h2><?php echo esc_html($translate('Major Areas and Demand')); ?></h2>
-                    <button type="button" class="button button-primary" data-olama-dialog="area-form"><?php echo esc_html($translate('Add Major Area')); ?></button>
+            <div id="olama-geographic-planner" class="olama-card" data-year-id="<?php echo intval($selected_year_id); ?>">
+                <div class="olama-planner-header">
+                    <div><h2><?php echo esc_html($translate('Geographic Planning')); ?></h2><div id="planner-demand-status" class="olama-planner-message" aria-live="polite"></div></div>
+                    <div class="olama-planner-actions">
+                        <button type="button" id="planner-refresh-areas" class="button"><?php echo esc_html($translate('Refresh Areas from Olama Core')); ?></button>
+                        <button type="button" id="planner-refresh-map" class="button"><?php echo esc_html($translate('Refresh Map')); ?></button>
+                        <button type="button" id="planner-new-group" class="button button-primary"><?php echo esc_html($translate('Create New Group')); ?></button>
+                    </div>
                 </div>
-                <form id="area-form" class="olama-inline-form">
-                    <input name="name" required placeholder="<?php echo esc_attr($translate('Area Name')); ?>" />
-                    <input name="code" required placeholder="<?php echo esc_attr($translate('Area Code')); ?>" />
-                    <input name="color" type="color" value="#1a56db" />
-                    <button class="button button-primary" type="submit"><?php echo esc_html($translate('Save')); ?></button>
-                </form>
-                <table class="wp-list-table widefat fixed striped">
-                    <thead><tr><th><?php echo esc_html($translate('Area')); ?></th><th><?php echo esc_html($translate('Morning Students')); ?></th><th><?php echo esc_html($translate('Morning Capacity')); ?></th><th><?php echo esc_html($translate('Afternoon Students')); ?></th><th><?php echo esc_html($translate('Afternoon Capacity')); ?></th><th><?php echo esc_html($translate('Status')); ?></th></tr></thead>
-                    <tbody>
-                        <?php foreach (($summary['area_demand'] ?? array()) as $demand): ?>
-                            <tr>
-                                <td><?php echo esc_html($demand['major_area_name']); ?></td>
-                                <td><?php echo intval($demand['morning_students']); ?></td>
-                                <td class="<?php echo intval($demand['morning_shortage']) ? 'olama-shortage' : ''; ?>"><?php echo intval($demand['morning_capacity']); ?></td>
-                                <td><?php echo intval($demand['afternoon_students']); ?></td>
-                                <td class="<?php echo intval($demand['afternoon_shortage']) ? 'olama-shortage' : ''; ?>"><?php echo intval($demand['afternoon_capacity']); ?></td>
-                                <td><?php echo intval($demand['morning_shortage']) + intval($demand['afternoon_shortage']) ? esc_html($translate('Needs buses')) : esc_html($translate('Ready')); ?></td>
-                            </tr>
-                        <?php endforeach; ?>
-                        <?php if (empty($summary['area_demand'])): ?><tr><td colspan="6"><?php echo esc_html($translate('Define major areas to begin demand planning.')); ?></td></tr><?php endif; ?>
-                    </tbody>
-                </table>
+                <div class="olama-planner-metrics" aria-live="polite">
+                    <div><strong id="metric-valid">0</strong><span><?php echo esc_html($translate('Valid locations')); ?></span></div>
+                    <div><strong id="metric-assigned">0</strong><span><?php echo esc_html($translate('Assigned')); ?></span></div>
+                    <div><strong id="metric-unassigned">0</strong><span><?php echo esc_html($translate('Unassigned')); ?></span></div>
+                    <div><strong id="metric-selected">0</strong><span><?php echo esc_html($translate('Selected')); ?></span></div>
+                    <div><strong id="metric-invalid">0</strong><span><?php echo esc_html($translate('Missing / invalid')); ?></span></div>
+                </div>
+                <div class="olama-planner-layout">
+                    <aside class="olama-planner-filters">
+                        <h3><?php echo esc_html($translate('Filters')); ?></h3>
+                        <label><?php echo esc_html($translate('Academic Year')); ?><select id="planner-year"><?php foreach ($years as $year): ?><option value="<?php echo intval($year->id); ?>" <?php selected($selected_year_id, $year->id); ?>><?php echo esc_html($year->year_name); ?></option><?php endforeach; ?></select></label>
+                        <label><?php echo esc_html($translate('Direction')); ?><select id="planner-direction"><option value="morning"><?php echo esc_html($translate('Morning')); ?></option><option value="afternoon"><?php echo esc_html($translate('Afternoon')); ?></option></select></label>
+                        <label><?php echo esc_html($translate('Oracle Major Area')); ?><select id="planner-area"><option value=""><?php echo esc_html($translate('All areas')); ?></option></select></label>
+                        <label><?php echo esc_html($translate('Assignment')); ?><select id="planner-assignment"><option value="all"><?php echo esc_html($translate('All')); ?></option><option value="assigned"><?php echo esc_html($translate('Assigned')); ?></option><option value="unassigned"><?php echo esc_html($translate('Unassigned')); ?></option></select></label>
+                        <label><?php echo esc_html($translate('Location Status')); ?><select id="planner-location-status"><option value="all"><?php echo esc_html($translate('All')); ?></option><option value="needs_review"><?php echo esc_html($translate('Needs review')); ?></option><option value="approved"><?php echo esc_html($translate('Approved')); ?></option></select></label>
+                        <label><?php echo esc_html($translate('Bus')); ?><select id="planner-filter-bus"><option value=""><?php echo esc_html($translate('All buses')); ?></option></select></label>
+                        <label><?php echo esc_html($translate('Trip')); ?><select id="planner-filter-trip"><option value=""><?php echo esc_html($translate('All trips')); ?></option></select></label>
+                        <label><?php echo esc_html($translate('Family search')); ?><input id="planner-search" type="search" /></label>
+                        <button type="button" id="planner-reset" class="button"><?php echo esc_html($translate('Reset')); ?></button>
+                    </aside>
+                    <main class="olama-planner-map-wrap">
+                        <div id="olama-planning-map" role="application" aria-label="<?php echo esc_attr($translate('Family planning map')); ?>"></div>
+                        <div class="olama-map-legend"><span class="marker-key marker-unassigned">○ <?php echo esc_html($translate('Unassigned')); ?></span><span class="marker-key marker-selected">◉ <?php echo esc_html($translate('Selected')); ?></span><span class="marker-key marker-review">△ <?php echo esc_html($translate('Needs review')); ?></span></div>
+                    </main>
+                    <aside class="olama-group-panel">
+                        <h3 id="group-panel-title"><?php echo esc_html($translate('Current Group')); ?></h3>
+                        <label><?php echo esc_html($translate('Group Name')); ?><input id="group-name" maxlength="180" /></label>
+                        <label><?php echo esc_html($translate('Primary Area')); ?><select id="group-area"><option value=""><?php echo esc_html($translate('No primary area')); ?></option></select></label>
+                        <label><?php echo esc_html($translate('Bus')); ?><select id="group-bus"><option value=""><?php echo esc_html($translate('Select Bus')); ?></option></select></label>
+                        <label><?php echo esc_html($translate('Trip Number')); ?><select id="group-trip"><option value=""><?php echo esc_html($translate('Select Trip')); ?></option></select></label>
+                        <label><?php echo esc_html($translate('Group Color')); ?><input id="group-color" type="color" value="#2563eb" /></label>
+                        <button type="button" id="planner-draw" class="button"><?php echo esc_html($translate('Select by Area')); ?></button>
+                        <dl class="olama-group-totals"><div><dt><?php echo esc_html($translate('Families')); ?></dt><dd id="group-family-count">0</dd></div><div><dt><?php echo esc_html($translate('Students')); ?></dt><dd id="group-student-count">0</dd></div><div><dt><?php echo esc_html($translate('Capacity')); ?></dt><dd id="group-capacity">0</dd></div><div><dt><?php echo esc_html($translate('Remaining')); ?></dt><dd id="group-remaining">0</dd></div><div><dt><?php echo esc_html($translate('Usage')); ?></dt><dd id="group-usage">0%</dd></div></dl>
+                        <div id="group-capacity-status" class="olama-capacity-status"></div>
+                        <div id="group-included-areas" class="description"></div>
+                        <ul id="group-family-list" class="olama-selected-families"></ul>
+                        <label><?php echo esc_html($translate('Notes')); ?><textarea id="group-notes" rows="3"></textarea></label>
+                        <div id="group-error" class="olama-planner-message" aria-live="polite"></div>
+                        <div class="olama-panel-buttons"><button type="button" id="group-cancel" class="button"><?php echo esc_html($translate('Cancel')); ?></button><button type="button" id="group-save" class="button button-primary" disabled><?php echo esc_html($translate('Save Draft')); ?></button></div>
+                    </aside>
+                </div>
             </div>
             <div class="olama-card olama-card-spaced">
-                <h2><?php echo esc_html($translate('Family Location Review')); ?></h2>
-                <table class="wp-list-table widefat fixed striped">
-                    <thead><tr><th><?php echo esc_html($translate('Family ID')); ?></th><th><?php echo esc_html($translate('Address')); ?></th><th><?php echo esc_html($translate('Coordinates')); ?></th><th><?php echo esc_html($translate('Status')); ?></th></tr></thead>
-                    <tbody>
-                    <?php foreach ($family_stops as $family_stop): ?>
-                        <tr><td><?php echo esc_html($family_stop['oracle_family_id']); ?></td><td><?php echo esc_html($family_stop['address_text']); ?></td><td><?php echo esc_html($family_stop['latitude'] . ', ' . $family_stop['longitude']); ?></td><td><?php echo esc_html($family_stop['verification_status']); ?></td></tr>
-                    <?php endforeach; ?>
-                    <?php if (!$family_stops): ?><tr><td colspan="4"><?php echo esc_html($translate('No imported family locations.')); ?></td></tr><?php endif; ?>
-                    </tbody>
-                </table>
+                <h2><?php echo esc_html($translate('Saved Geographic Groups')); ?></h2>
+                <table class="wp-list-table widefat striped"><thead><tr><th><?php echo esc_html($translate('Group')); ?></th><th><?php echo esc_html($translate('Primary Area')); ?></th><th><?php echo esc_html($translate('Direction')); ?></th><th><?php echo esc_html($translate('Bus')); ?></th><th><?php echo esc_html($translate('Trip')); ?></th><th><?php echo esc_html($translate('Families')); ?></th><th><?php echo esc_html($translate('Students')); ?></th><th><?php echo esc_html($translate('Capacity')); ?></th><th><?php echo esc_html($translate('Remaining')); ?></th><th><?php echo esc_html($translate('Status')); ?></th><th><?php echo esc_html($translate('Updated')); ?></th><th><?php echo esc_html($translate('Actions')); ?></th></tr></thead><tbody id="planner-groups-body"><tr><td colspan="12"><?php echo esc_html($translate('Loading...')); ?></td></tr></tbody></table>
             </div>
+            <details class="olama-card olama-card-spaced"><summary><strong><?php echo esc_html($translate('Major Areas and Demand Summary')); ?></strong></summary>
+                <table class="wp-list-table widefat striped"><thead><tr><th><?php echo esc_html($translate('Area')); ?></th><th><?php echo esc_html($translate('Morning Students')); ?></th><th><?php echo esc_html($translate('Morning Capacity')); ?></th><th><?php echo esc_html($translate('Afternoon Students')); ?></th><th><?php echo esc_html($translate('Afternoon Capacity')); ?></th></tr></thead><tbody><?php foreach (($summary['area_demand'] ?? array()) as $demand): ?><tr><td><?php echo esc_html($demand['major_area_name']); ?></td><td><?php echo intval($demand['morning_students']); ?></td><td><?php echo intval($demand['morning_capacity']); ?></td><td><?php echo intval($demand['afternoon_students']); ?></td><td><?php echo intval($demand['afternoon_capacity']); ?></td></tr><?php endforeach; ?><?php if (empty($summary['area_demand'])): ?><tr><td colspan="5"><?php echo esc_html($translate('Refresh areas from Olama Core to populate planning classifications.')); ?></td></tr><?php endif; ?></tbody></table>
+            </details>
         <?php endif; ?>
 
         <?php if ($active_tab === 'routes'): ?>
             <div class="olama-card">
                 <div class="olama-transportation-toolbar"><h2><?php echo esc_html($translate('Route Versions')); ?></h2></div>
+                <p class="description"><?php echo esc_html($translate('Approved geographic planning groups identify the bus, direction, and trip, but remain separate from route versions until route generation is implemented.')); ?></p>
                 <form id="route-form" class="olama-inline-form olama-route-form">
                     <input type="hidden" name="academic_year_id" value="<?php echo intval($selected_year_id); ?>" />
                     <input name="name" required placeholder="<?php echo esc_attr($translate('Route Name')); ?>" />
@@ -254,6 +273,8 @@ $translate = array('Olama_School_Helpers', 'translate');
                             <th><?php echo esc_html($translate('Bus Number')); ?></th>
                             <th><?php echo esc_html($translate('Driver License Number')); ?></th>
                             <th><?php echo esc_html($translate('Passenger Capacity')); ?></th>
+                            <th><?php echo esc_html($translate('Morning Trips')); ?></th>
+                            <th><?php echo esc_html($translate('Afternoon Trips')); ?></th>
                             <th><?php echo esc_html($translate('Driver')); ?></th>
                             <th><?php echo esc_html($translate('Companion')); ?></th>
                             <th><?php echo esc_html($translate('License Expiry')); ?></th>
@@ -268,7 +289,9 @@ $translate = array('Olama_School_Helpers', 'translate');
                                     <td><strong><?php echo esc_html($bus->bus_number); ?></strong></td>
                                     <td><?php echo $bus->government_number ? esc_html($bus->government_number) : '-'; ?></td>
                                     <td><?php echo $bus->driver_license_number ? esc_html($bus->driver_license_number) : '-'; ?></td>
-                                    <td><?php echo intval($bus->passenger_capacity); ?></td>
+                                    <td><?php echo intval($bus->passenger_capacity); ?><?php if (intval($bus->passenger_capacity) === 0 && intval($bus->planning_capacity) > 0): ?><br><small><?php echo esc_html($translate('Planning override')); ?>: <?php echo intval($bus->planning_capacity); ?></small><?php endif; ?></td>
+                                    <td><?php echo intval($bus->morning_trip_count); ?></td>
+                                    <td><?php echo intval($bus->afternoon_trip_count); ?></td>
                                     <td>
                                         <?php
                                         echo $bus->driver_name ? esc_html($bus->driver_name) : '-';
@@ -293,7 +316,7 @@ $translate = array('Olama_School_Helpers', 'translate');
                                 </tr>
                             <?php endforeach; ?>
                         <?php else: ?>
-                            <tr><td colspan="9"><?php echo esc_html($translate('No data')); ?></td></tr>
+                            <tr><td colspan="11"><?php echo esc_html($translate('No data')); ?></td></tr>
                         <?php endif; ?>
                     </tbody>
                 </table>
@@ -314,6 +337,9 @@ $translate = array('Olama_School_Helpers', 'translate');
                                 <p><label><?php echo esc_html($translate('Driver License Number')); ?></label><input type="text" id="bus-driver-license-number" readonly class="widefat" /></p>
                                 <p><label><?php echo esc_html($translate('Registered Capacity')); ?></label><input type="number" id="bus-capacity" readonly class="widefat" /></p>
                                 <p><label><?php echo esc_html($translate('Planning Capacity')); ?></label><input type="number" name="planning_capacity" id="bus-planning-capacity" required class="widefat" min="1" /></p>
+                                <p><label><?php echo esc_html($translate('Morning Trips')); ?></label><input type="number" name="morning_trip_count" id="bus-morning-trip-count" required class="widefat" min="1" max="10" value="2" /></p>
+                                <p><label><?php echo esc_html($translate('Afternoon Trips')); ?></label><input type="number" name="afternoon_trip_count" id="bus-afternoon-trip-count" required class="widefat" min="1" max="10" value="3" /></p>
+                                <p id="bus-core-capacity-warning" class="description" style="display:none"><?php echo esc_html($translate('Core capacity is missing. The positive value entered here is a local planning override.')); ?></p>
                                 <p><label><?php echo esc_html($translate('License Expiry')); ?></label><input type="text" id="bus-license-expiry" readonly class="widefat" /></p>
                                 <p><label><?php echo esc_html($translate('Driver')); ?></label><select name="driver_user_id" id="bus-driver-id" class="widefat"><option value=""><?php echo esc_html($translate('Select Driver')); ?></option><?php foreach ($drivers as $driver): ?><option value="<?php echo intval($driver->ID); ?>"><?php echo esc_html($driver->display_name); ?></option><?php endforeach; ?></select></p>
                                 <p><label><?php echo esc_html($translate('Companion')); ?></label><select name="companion_user_id" id="bus-companion-id" class="widefat"><option value=""><?php echo esc_html($translate('Select Companion')); ?></option><?php foreach ($companions as $companion): ?><option value="<?php echo intval($companion->ID); ?>"><?php echo esc_html($companion->display_name); ?></option><?php endforeach; ?></select></p>
@@ -334,6 +360,7 @@ $translate = array('Olama_School_Helpers', 'translate');
         <?php if ($active_tab === 'assignments'): ?>
             <div class="olama-card">
                 <h2><?php echo esc_html($translate('Student Assignments')); ?></h2>
+                <p class="notice notice-info inline"><?php echo esc_html($translate('This screen uses the legacy annual student-to-bus assignment model. Geographic groups are maintained separately by direction and trip.')); ?></p>
                 <div class="olama-form-grid">
                     <p><label><?php echo esc_html($translate('Academic Year')); ?></label><select id="assignment-year-filter" class="widefat"><?php foreach ($years as $year): ?><option value="<?php echo intval($year->id); ?>" <?php selected($selected_year_id, $year->id); ?>><?php echo esc_html($year->year_name); ?></option><?php endforeach; ?></select></p>
                     <p><label><?php echo esc_html($translate('Select Bus')); ?></label><select id="assignment-bus-filter" class="widefat"><option value=""><?php echo esc_html($translate('Select a bus')); ?></option><?php foreach ($buses as $bus): ?><option value="<?php echo intval($bus->id); ?>" <?php selected($selected_bus_id, $bus->id); ?>><?php echo esc_html($bus->bus_number . ' - ' . ($bus->government_number ?: $translate('No bus number'))); ?></option><?php endforeach; ?></select></p>

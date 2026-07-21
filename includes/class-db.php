@@ -27,6 +27,8 @@ class Olama_Transportation_DB
             chassis_number varchar(100) DEFAULT NULL,
             passenger_capacity smallint(5) UNSIGNED NOT NULL,
             planning_capacity smallint(5) UNSIGNED DEFAULT NULL,
+            morning_trip_count tinyint(3) UNSIGNED NOT NULL DEFAULT 2,
+            afternoon_trip_count tinyint(3) UNSIGNED NOT NULL DEFAULT 3,
             driver_employee_id varchar(50) DEFAULT NULL,
             driver_source_name varchar(255) DEFAULT NULL,
             companion_employee_id varchar(50) DEFAULT NULL,
@@ -293,6 +295,51 @@ class Olama_Transportation_DB
             KEY object_lookup (object_type, object_id),
             KEY actor_user_id (actor_user_id),
             KEY created_at (created_at)
+        ) $cc;");
+
+        dbDelta("CREATE TABLE {$p}olama_transport_planning_groups (
+            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            academic_year_id bigint(20) UNSIGNED NOT NULL,
+            direction varchar(20) NOT NULL,
+            trip_number tinyint(3) UNSIGNED NOT NULL,
+            group_name varchar(180) NOT NULL,
+            bus_id bigint(20) UNSIGNED NOT NULL,
+            major_area_id bigint(20) UNSIGNED DEFAULT NULL,
+            color varchar(20) NOT NULL,
+            polygon_geojson longtext DEFAULT NULL,
+            notes text DEFAULT NULL,
+            status varchar(20) NOT NULL DEFAULT 'draft',
+            family_count int(10) UNSIGNED NOT NULL DEFAULT 0,
+            student_count int(10) UNSIGNED NOT NULL DEFAULT 0,
+            capacity_snapshot int(10) UNSIGNED NOT NULL DEFAULT 0,
+            approved_by bigint(20) UNSIGNED DEFAULT NULL,
+            approved_at datetime DEFAULT NULL,
+            created_by bigint(20) UNSIGNED DEFAULT NULL,
+            updated_by bigint(20) UNSIGNED DEFAULT NULL,
+            created_at datetime NOT NULL,
+            updated_at datetime NOT NULL,
+            PRIMARY KEY  (id),
+            KEY year_direction_status (academic_year_id, direction, status),
+            KEY bus_trip_lookup (academic_year_id, direction, bus_id, trip_number, status),
+            KEY major_area_lookup (major_area_id, academic_year_id)
+        ) $cc;");
+
+        dbDelta("CREATE TABLE {$p}olama_transport_planning_group_families (
+            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            group_id bigint(20) UNSIGNED NOT NULL,
+            family_uid varchar(100) NOT NULL,
+            oracle_family_id varchar(100) NOT NULL,
+            family_stop_id bigint(20) UNSIGNED NOT NULL,
+            student_count_snapshot int(10) UNSIGNED NOT NULL DEFAULT 0,
+            latitude_snapshot decimal(10,7) NOT NULL,
+            longitude_snapshot decimal(10,7) NOT NULL,
+            major_area_id_snapshot bigint(20) UNSIGNED DEFAULT NULL,
+            region_name_snapshot varchar(150) DEFAULT NULL,
+            created_at datetime NOT NULL,
+            PRIMARY KEY  (id),
+            UNIQUE KEY group_family (group_id, family_uid),
+            KEY family_lookup (family_uid),
+            KEY group_lookup (group_id)
         ) $cc;");
 
         self::normalize_core_bus_projection();

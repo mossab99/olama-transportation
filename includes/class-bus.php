@@ -151,6 +151,8 @@ class Olama_Transportation_Bus
         }
         $bus_data = array(
             'planning_capacity'   => intval($data['planning_capacity'] ?? $existing_bus->passenger_capacity),
+            'morning_trip_count'  => max(1, min(10, intval($data['morning_trip_count'] ?? $existing_bus->morning_trip_count ?? 2))),
+            'afternoon_trip_count'=> max(1, min(10, intval($data['afternoon_trip_count'] ?? $existing_bus->afternoon_trip_count ?? 3))),
             'driver_user_id'      => !empty($data['driver_user_id']) ? intval($data['driver_user_id']) : null,
             'companion_user_id'   => !empty($data['companion_user_id']) ? intval($data['companion_user_id']) : null,
             'accessibility'       => !empty($data['accessibility']) ? 1 : 0,
@@ -159,14 +161,23 @@ class Olama_Transportation_Bus
             'updated_at'          => current_time('mysql', true),
         );
 
-        if ($bus_data['planning_capacity'] <= 0 || $bus_data['planning_capacity'] > intval($existing_bus->passenger_capacity)) {
-            return new WP_Error('invalid_capacity', __('Planning capacity must be greater than zero and cannot exceed the registered Core capacity.', 'olama-transportation'));
+        $registered_capacity = intval($existing_bus->passenger_capacity);
+        if ($bus_data['planning_capacity'] <= 0 || ($registered_capacity > 0 && $bus_data['planning_capacity'] > $registered_capacity)) {
+            return new WP_Error('invalid_capacity', $registered_capacity > 0
+                ? __('Planning capacity must be greater than zero and cannot exceed the registered Core capacity.', 'olama-transportation')
+                : __('Enter a positive local planning capacity because Core capacity is missing.', 'olama-transportation'));
         }
 
         $before = self::get_bus($id);
         $updated = $wpdb->update($table, $bus_data, array('id' => $id));
         if ($updated !== false && class_exists('Olama_Transportation_Audit')) {
             Olama_Transportation_Audit::record('update_planning_profile', 'bus', $id, $before, self::get_bus($id));
+            if ((int) $before->planning_capacity !== $bus_data['planning_capacity']) {
+                Olama_Transportation_Audit::record('bus_planning_capacity_updated', 'bus', $id, array('planning_capacity' => (int) $before->planning_capacity), array('planning_capacity' => $bus_data['planning_capacity']));
+            }
+            if ((int) $before->morning_trip_count !== $bus_data['morning_trip_count'] || (int) $before->afternoon_trip_count !== $bus_data['afternoon_trip_count']) {
+                Olama_Transportation_Audit::record('bus_trip_counts_updated', 'bus', $id, array('morning' => (int) $before->morning_trip_count, 'afternoon' => (int) $before->afternoon_trip_count), array('morning' => $bus_data['morning_trip_count'], 'afternoon' => $bus_data['afternoon_trip_count']));
+            }
         }
         return $updated !== false ? $id : new WP_Error('db_error', __('Failed to update bus planning settings.', 'olama-transportation'));
     }

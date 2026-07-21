@@ -148,6 +148,37 @@ class Olama_Transportation_Admin
                 'failed'                 => Olama_School_Helpers::translate('Operation failed'),
             ),
         ));
+
+        $tab = isset($_GET['tab']) ? sanitize_key(wp_unslash($_GET['tab'])) : 'overview';
+        if ($tab === 'planning') {
+            $this->enqueue_style('olama-leaflet', 'assets/vendor/leaflet/leaflet.css');
+            $this->enqueue_style('olama-leaflet-draw', 'assets/vendor/leaflet-draw/leaflet.draw.css', array('olama-leaflet'));
+            $this->enqueue_style('olama-geographic-planner', 'assets/css/geographic-planner.css', array('olama-leaflet-draw'));
+            wp_enqueue_script('olama-leaflet', OLAMA_TRANSPORTATION_URL . 'assets/vendor/leaflet/leaflet.js', array(), $this->asset_version(OLAMA_TRANSPORTATION_PATH . 'assets/vendor/leaflet/leaflet.js'), true);
+            wp_enqueue_script('olama-leaflet-draw', OLAMA_TRANSPORTATION_URL . 'assets/vendor/leaflet-draw/leaflet.draw.js', array('olama-leaflet'), $this->asset_version(OLAMA_TRANSPORTATION_PATH . 'assets/vendor/leaflet-draw/leaflet.draw.js'), true);
+            wp_enqueue_script('olama-geographic-planner', OLAMA_TRANSPORTATION_URL . 'assets/js/geographic-planner.js', array('olama-leaflet-draw'), $this->asset_version(OLAMA_TRANSPORTATION_PATH . 'assets/js/geographic-planner.js'), true);
+            wp_localize_script('olama-geographic-planner', 'olamaPlanner', array(
+                'restUrl' => esc_url_raw(rest_url('olama-transportation/v1/')),
+                'restNonce' => wp_create_nonce('wp_rest'),
+                'canManage' => Olama_School_Permissions::can('olama_manage_transport_buses'),
+                'canApprove' => Olama_School_Permissions::can('olama_approve_transport_routes') || Olama_School_Permissions::can('olama_manage_transport_buses'),
+                'tileUrl' => 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                'tileAttribution' => '&copy; OpenStreetMap contributors',
+                'i18n' => array(
+                    'available' => Olama_School_Helpers::translate('Available'), 'draft' => Olama_School_Helpers::translate('Draft'),
+                    'approved' => Olama_School_Helpers::translate('Approved'), 'edit' => Olama_School_Helpers::translate('Edit'),
+                    'view' => Olama_School_Helpers::translate('View'), 'approve' => Olama_School_Helpers::translate('Approve'),
+                    'revert' => Olama_School_Helpers::translate('Revert to Draft'), 'archive' => Olama_School_Helpers::translate('Archive'),
+                    'confirmArchive' => Olama_School_Helpers::translate('Archive this planning group?'),
+                    'discard' => Olama_School_Helpers::translate('Discard unsaved planning changes?'),
+                    'withinCapacity' => Olama_School_Helpers::translate('Within capacity'),
+                    'nearCapacity' => Olama_School_Helpers::translate('Near capacity'),
+                    'capacityExceeded' => Olama_School_Helpers::translate('Capacity exceeded by'),
+                    'saved' => Olama_School_Helpers::translate('Planning group saved.'),
+                    'noGroups' => Olama_School_Helpers::translate('No planning groups.'),
+                ),
+            ));
+        }
     }
 
     private function enqueue_style($handle, $relative_path, $dependencies = array())
