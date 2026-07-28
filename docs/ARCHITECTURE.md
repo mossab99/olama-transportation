@@ -14,7 +14,7 @@ Oracle ERP (read only)
 
 ## Geographic planning boundary
 
-`Olama_Transportation_Area_Sync` projects `olama_core()->transport_master()->get_regions(false)` into existing major areas/mappings. Existing color, boundary GeoJSON, and notes are preserved. Core regions missing from a later refresh are made inactive, never deleted. Family-stop backfill changes only stops with no current area so a reviewed/manual classification is preserved.
+`Olama_Transportation_Area_Sync` projects `olama_core()->transport_master()->get_regions(true)` into existing major areas/mappings. Only Oracle-active regions are exposed to planning; existing color, boundary GeoJSON, and notes are preserved. Regions missing from the active result are made inactive, never deleted. Family-stop backfill changes only stops with no current area so a reviewed/manual classification is preserved.
 
 `Olama_Transportation_Map_Data` is the single normalized demand provider. It selects one demand mode for the whole academic year: direction-specific active transport enrollments, or academic-registration fallback when the enrollment table has no rows for that year. It combines family identity, Core transport region, family stop, area mapping, and active group assignment into one map response.
 

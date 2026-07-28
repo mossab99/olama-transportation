@@ -395,8 +395,8 @@ class Olama_Transportation_DB
             return;
         }
 
-        $students_table = $wpdb->prefix . 'olama_core_students';
-        if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $students_table)) === $students_table) {
+        $students_table = olama_core()->read_models()->table('students');
+        if (olama_core()->read_models()->available('students')) {
             $wpdb->query(
                 "UPDATE {$table} a INNER JOIN {$students_table} s ON a.student_id = s.id
                  SET a.student_uid = s.student_uid WHERE a.student_uid IS NULL"

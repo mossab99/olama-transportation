@@ -100,7 +100,7 @@ class Olama_Transportation_Map_Data
     public static function demand_rows($academic_year_id, $study_year, $direction, $mode)
     {
         global $wpdb;
-        $families = $wpdb->prefix . 'olama_core_families';
+        $families = olama_core()->read_models()->table('families');
         $stops = Olama_Transportation_DB::table('family_stops');
         $alternate = strpos($study_year, '/') !== false ? str_replace('/', '-', $study_year) : str_replace('-', '/', $study_year);
         if ($mode === 'transport_enrollments') {
@@ -119,7 +119,7 @@ class Olama_Transportation_Map_Data
                 $academic_year_id
             ), ARRAY_A);
         }
-        $years = $wpdb->prefix . 'olama_core_student_years';
+        $years = olama_core()->read_models()->table('student_years');
         return $wpdb->get_results($wpdb->prepare(
             "SELECT f.family_uid, f.oracle_family_id,
                     COALESCE(NULLIF(f.sponsor_full_name,''), NULLIF(f.father_name,''), f.oracle_family_id) family_name,
@@ -165,7 +165,8 @@ class Olama_Transportation_Map_Data
         $mappings = Olama_Transportation_DB::table('area_mappings');
         return $wpdb->get_results(
             "SELECT a.id,a.name,a.code,a.color,a.boundary_geojson,a.status,m.oracle_region_id,m.oracle_region_name
-             FROM {$areas} a LEFT JOIN {$mappings} m ON m.major_area_id=a.id ORDER BY a.status='active' DESC,a.name",
+             FROM {$areas} a LEFT JOIN {$mappings} m ON m.major_area_id=a.id
+             WHERE a.status='active' ORDER BY a.name",
             ARRAY_A
         );
     }

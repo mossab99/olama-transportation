@@ -325,7 +325,7 @@ class Olama_Transportation_Geographic_Planning
         if ($with_families) {
             global $wpdb;
             $members = Olama_Transportation_DB::table('planning_group_families');
-            $families = $wpdb->prefix . 'olama_core_families';
+            $families = olama_core()->read_models()->table('families');
             $row['families'] = $wpdb->get_results($wpdb->prepare(
                 "SELECT m.*,COALESCE(NULLIF(f.sponsor_full_name,''),NULLIF(f.father_name,''),m.oracle_family_id) family_name
                  FROM {$members} m LEFT JOIN {$families} f ON f.family_uid=m.family_uid WHERE m.group_id=%d ORDER BY family_name",

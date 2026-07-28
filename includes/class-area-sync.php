@@ -16,7 +16,8 @@ class Olama_Transportation_Area_Sync
 
         $areas = Olama_Transportation_DB::table('major_areas');
         $mappings = Olama_Transportation_DB::table('area_mappings');
-        $rows = olama_core()->transport_master()->get_regions(false);
+        // The planner must only project regions that Oracle currently marks active.
+        $rows = olama_core()->transport_master()->get_regions(true);
         $now = current_time('mysql', true);
         $seen = array();
         $summary = array('core_regions' => count($rows), 'created' => 0, 'mappings_created' => 0, 'updated' => 0, 'deactivated' => 0, 'duplicates' => 0, 'backfilled' => 0);
@@ -30,13 +31,12 @@ class Olama_Transportation_Area_Sync
                 }
                 $seen[] = $oracle_id;
                 $name = sanitize_text_field((string) ($row['region_name'] ?? $oracle_id));
-                $active = !empty($row['is_active']) ? 'active' : 'inactive';
                 $mapping = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$mappings} WHERE oracle_region_id = %s", $oracle_id), ARRAY_A);
                 if ($mapping) {
                     $area = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$areas} WHERE id = %d", $mapping['major_area_id']), ARRAY_A);
                     $wpdb->update($mappings, array('oracle_region_name' => $name, 'updated_at' => $now), array('id' => $mapping['id']));
                     if ($area) {
-                        $area_update = array('status' => $active, 'updated_at' => $now);
+                        $area_update = array('status' => 'active', 'updated_at' => $now);
                         if (empty($area['notes']) && $area['name'] !== $name) {
                             $area_update['name'] = $name;
                         }
@@ -51,7 +51,7 @@ class Olama_Transportation_Area_Sync
                     'name' => $name,
                     'code' => $code,
                     'color' => self::stable_color($oracle_id),
-                    'status' => $active,
+                    'status' => 'active',
                     'created_by' => get_current_user_id() ?: null,
                     'created_at' => $now,
                     'updated_at' => $now,
@@ -83,6 +83,13 @@ class Olama_Transportation_Area_Sync
                     array_merge(array($now), $seen)
                 );
                 $summary['deactivated'] += max(0, (int) $wpdb->query($sql));
+            } else {
+                $summary['deactivated'] += max(0, (int) $wpdb->query($wpdb->prepare(
+                    "UPDATE {$areas} a INNER JOIN {$mappings} m ON m.major_area_id = a.id
+                     SET a.status = 'inactive', a.updated_at = %s
+                     WHERE a.status <> 'inactive'",
+                    $now
+                )));
             }
             $summary['backfilled'] = self::backfill_family_stops(false);
             if ($wpdb->last_error) {
@@ -126,7 +133,7 @@ class Olama_Transportation_Area_Sync
     {
         global $wpdb;
         $stops = Olama_Transportation_DB::table('family_stops');
-        $families = $wpdb->prefix . 'olama_core_families';
+        $families = olama_core()->read_models()->table('families');
         $mappings = Olama_Transportation_DB::table('area_mappings');
         $now = current_time('mysql', true);
         $updated = (int) $wpdb->query($wpdb->prepare(

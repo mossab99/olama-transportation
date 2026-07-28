@@ -19,8 +19,8 @@ class Olama_Transportation_Family_Locations
             ? str_replace('/', '-', $study_year)
             : str_replace('-', '/', $study_year);
 
-        $families = $wpdb->prefix . 'olama_core_families';
-        $student_years = $wpdb->prefix . 'olama_core_student_years';
+        $families = olama_core()->read_models()->table('families');
+        $student_years = olama_core()->read_models()->table('student_years');
         $stops = Olama_Transportation_DB::table('family_stops');
 
         return $wpdb->get_results($wpdb->prepare(

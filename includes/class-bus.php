@@ -115,7 +115,7 @@ class Olama_Transportation_Bus
     {
         global $wpdb;
         $table = "{$wpdb->prefix}olama_transport_buses";
-        $employees = "{$wpdb->prefix}olama_core_employees";
+        $employees = olama_core()->read_models()->table('employees');
 
         return $wpdb->get_results(
             "SELECT b.*,
@@ -223,10 +223,8 @@ class Olama_Transportation_Bus
 
         foreach ($student_ids as $student_id) {
             $student_id = intval($student_id);
-            $student_uid = $wpdb->get_var($wpdb->prepare(
-                "SELECT student_uid FROM {$wpdb->prefix}olama_core_students WHERE id = %d",
-                $student_id
-            ));
+            $student = olama_core()->students()->get_by_id($student_id);
+            $student_uid = $student['student_uid'] ?? '';
 
             if (!$student_uid) {
                 $error_count++;
@@ -285,10 +283,8 @@ class Olama_Transportation_Bus
         global $wpdb;
         $table = "{$wpdb->prefix}olama_student_bus_assignments";
 
-        $student_uid = $wpdb->get_var($wpdb->prepare(
-            "SELECT student_uid FROM {$wpdb->prefix}olama_core_students WHERE id = %d",
-            $student_id
-        ));
+        $student = olama_core()->students()->get_by_id($student_id);
+        $student_uid = $student['student_uid'] ?? '';
 
         if ($student_uid) {
             $result = $wpdb->delete($table, array(
@@ -313,12 +309,14 @@ class Olama_Transportation_Bus
             return array();
         }
 
+        $core_students = olama_core()->read_models()->table('students');
+        $core_student_years = olama_core()->read_models()->table('student_years');
         return $wpdb->get_results($wpdb->prepare("
             SELECT s.*, a.id AS assignment_id, a.pickup_location, a.dropoff_location,
                    a.notes, a.assigned_at, sy.section_name, sy.class_name AS grade_name
             FROM {$wpdb->prefix}olama_student_bus_assignments a
-            JOIN {$wpdb->prefix}olama_core_students s ON a.student_uid = s.student_uid
-            LEFT JOIN {$wpdb->prefix}olama_core_student_years sy
+            JOIN {$core_students} s ON a.student_uid = s.student_uid
+            LEFT JOIN {$core_student_years} sy
                 ON s.student_uid = sy.student_uid AND sy.study_year = %s
             WHERE a.bus_id = %d AND a.academic_year_id = %d
             ORDER BY s.student_name ASC
@@ -329,12 +327,13 @@ class Olama_Transportation_Bus
     {
         global $wpdb;
 
+        $core_students = olama_core()->read_models()->table('students');
         return $wpdb->get_row($wpdb->prepare("
             SELECT a.*, b.bus_number, b.government_number,
                    b.driver_license_number, b.passenger_capacity
             FROM {$wpdb->prefix}olama_student_bus_assignments a
             JOIN {$wpdb->prefix}olama_transport_buses b ON a.bus_id = b.id
-            JOIN {$wpdb->prefix}olama_core_students s ON a.student_uid = s.student_uid
+            JOIN {$core_students} s ON a.student_uid = s.student_uid
             WHERE s.id = %d AND a.academic_year_id = %d
         ", $student_id, $academic_year_id));
     }

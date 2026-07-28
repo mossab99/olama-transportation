@@ -146,10 +146,12 @@ class Olama_Transportation_Ajax
         if ($study_year === '') {
             wp_send_json_error(__('The selected academic year could not be mapped to Olama Core.', 'olama-transportation'));
         }
+        $core_students = olama_core()->read_models()->table('students');
+        $core_student_years = olama_core()->read_models()->table('student_years');
         $students = $wpdb->get_results($wpdb->prepare("
             SELECT s.*, sy.section_name, sy.class_name AS grade_name
-            FROM {$wpdb->prefix}olama_core_students s
-            JOIN {$wpdb->prefix}olama_core_student_years sy ON s.student_uid = sy.student_uid
+            FROM {$core_students} s
+            JOIN {$core_student_years} sy ON s.student_uid = sy.student_uid
             LEFT JOIN {$wpdb->prefix}olama_student_bus_assignments a
                 ON s.student_uid = a.student_uid AND a.academic_year_id = %d
             WHERE sy.study_year = %s AND a.id IS NULL
@@ -157,7 +159,7 @@ class Olama_Transportation_Ajax
         ", $academic_year_id, $study_year));
 
         $total_enrolled = $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM {$wpdb->prefix}olama_core_student_years WHERE study_year = %s",
+            "SELECT COUNT(*) FROM {$core_student_years} WHERE study_year = %s",
             $study_year
         ));
         $total_assigned = $wpdb->get_var($wpdb->prepare(

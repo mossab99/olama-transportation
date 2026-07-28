@@ -237,14 +237,14 @@ class Olama_Transportation_Repository
 
         if ($entity === 'area-mappings') {
             $matched_region = null;
-            foreach (olama_core()->transport_master()->get_regions(false) as $region) {
+            foreach (olama_core()->transport_master()->get_regions(true) as $region) {
                 if ((string) $region['oracle_region_id'] === (string) ($clean['oracle_region_id'] ?? '')) {
                     $matched_region = $region;
                     break;
                 }
             }
             if (!$matched_region) {
-                return new WP_Error('core_region_not_found', __('Transportation region does not exist in Olama Core.', 'olama-transportation'));
+                return new WP_Error('core_region_not_found', __('Active transportation region does not exist in Olama Core.', 'olama-transportation'));
             }
             $clean['oracle_region_name'] = $matched_region['region_name'];
         }

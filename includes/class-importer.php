@@ -209,15 +209,10 @@ class Olama_Transportation_Importer
 
     private function family_exists($family_id)
     {
-        global $wpdb;
-        $table = $wpdb->prefix . 'olama_core_families';
-        if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table)) !== $table) {
+        if (!function_exists('olama_core') || !olama_core()->read_models()->available('families')) {
             return false;
         }
-        return (bool) $wpdb->get_var($wpdb->prepare(
-            "SELECT 1 FROM {$table} WHERE oracle_family_id = %s LIMIT 1",
-            $family_id
-        ));
+        return (bool) olama_core()->families()->get_by_oracle_id($family_id);
     }
 
     private function in_service_region($lat, $lng)
