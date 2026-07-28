@@ -17,6 +17,8 @@
     var overlayLayer = L.layerGroup().addTo(map);
     var drawnLayer = L.featureGroup().addTo(map);
     var schoolMarker = null;
+    var activePolygonDrawer = null;
+    var restoreMapDragging = false;
 
     function api(path, options) {
         options = options || {};
@@ -136,6 +138,7 @@
     }
 
     function markerClicked(family, marker) {
+        if (activePolygonDrawer && activePolygonDrawer.enabled()) return;
         if (isSelectable(family)) toggleFamily(family.family_uid);
         marker.bindPopup(buildPopup(family), { maxWidth: 290 }).openPopup();
     }
@@ -212,6 +215,7 @@
     }
 
     function clearEditor() {
+        stopAreaDrawing();
         state.selectedFamilyUids.clear(); state.editingGroupId = 0; state.selectedBusId = 0; state.selectedTripNumber = 0; state.unsavedChanges = false; state.readOnly = false; state.drawnPolygon = null;
         drawnLayer.clearLayers(); el('group-name').value = ''; el('group-area').value = ''; el('group-bus').value = ''; el('group-trip').replaceChildren(new Option('Select Trip', '')); el('group-color').value = '#2563eb'; el('group-notes').value = ''; el('group-error').textContent = '';
         ['group-name','group-area','group-bus','group-trip','group-color','group-notes','planner-draw'].forEach(function (id) { el(id).disabled = false; });
@@ -301,6 +305,42 @@
     function showError(error) { el('group-error').textContent = error.message || String(error); el('group-error').className = 'olama-planner-message is-error'; }
     function discardOkay() { return !state.unsavedChanges || window.confirm(tr('discard')); }
 
+    function startAreaDrawing() {
+        if (activePolygonDrawer && activePolygonDrawer.enabled()) {
+            activePolygonDrawer.disable();
+            return;
+        }
+        if (!state.unsavedChanges && !state.editingGroupId) startNew();
+
+        // A small pointer movement on the first click makes Leaflet treat it as
+        // a pan. Area selection must own the pointer until drawing is finished.
+        restoreMapDragging = map.dragging.enabled();
+        if (restoreMapDragging) map.dragging.disable();
+        map.getContainer().classList.add('is-area-drawing');
+        el('planner-draw').classList.add('button-primary');
+        el('planner-draw').setAttribute('aria-pressed', 'true');
+
+        activePolygonDrawer = new L.Draw.Polygon(map, {
+            allowIntersection: false,
+            showArea: true,
+            shapeOptions: { color: el('group-color').value }
+        });
+        activePolygonDrawer.enable();
+    }
+
+    function stopAreaDrawing() {
+        if (activePolygonDrawer && activePolygonDrawer.enabled()) {
+            activePolygonDrawer.disable();
+            return; // draw:drawstop performs the shared cleanup synchronously.
+        }
+        activePolygonDrawer = null;
+        map.getContainer().classList.remove('is-area-drawing');
+        el('planner-draw').classList.remove('button-primary');
+        el('planner-draw').setAttribute('aria-pressed', 'false');
+        if (restoreMapDragging && !map.dragging.enabled()) map.dragging.enable();
+        restoreMapDragging = false;
+    }
+
     el('planner-new-group').addEventListener('click', startNew);
     el('group-cancel').addEventListener('click', function () { if (discardOkay()) clearEditor(); });
     el('group-save').addEventListener('click', saveGroup);
@@ -314,7 +354,9 @@
     el('planner-direction').addEventListener('change', function () { if (!discardOkay()) { this.value = state.direction; return; } state.direction = this.value; clearEditor(); load(false); });
     el('planner-refresh-map').addEventListener('click', function () { state.mapDataCache = {}; load(true); });
     el('planner-refresh-areas').addEventListener('click', function () { api('core/refresh-areas', { method: 'POST' }).then(function () { state.mapDataCache = {}; return load(true); }).catch(showError); });
-    el('planner-draw').addEventListener('click', function () { if (!state.unsavedChanges && !state.editingGroupId) startNew(); new L.Draw.Polygon(map, { allowIntersection: false, showArea: true, shapeOptions: { color: el('group-color').value } }).enable(); });
+    el('planner-draw').setAttribute('aria-pressed', 'false');
+    el('planner-draw').addEventListener('click', startAreaDrawing);
+    map.on(L.Draw.Event.DRAWSTOP, stopAreaDrawing);
     map.on(L.Draw.Event.CREATED, function (event) {
         drawnLayer.clearLayers(); drawnLayer.addLayer(event.layer); state.drawnPolygon = event.layer.toGeoJSON().geometry; state.unsavedChanges = true;
         var ring = state.drawnPolygon.coordinates[0];
