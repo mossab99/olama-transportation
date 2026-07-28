@@ -110,4 +110,66 @@ class Olama_Transportation_Repository_Test extends WP_UnitTestCase
         $this->assertFalse($slots[0]['assignable']);
         $this->assertCount(2, $slots[0]['slots']);
     }
+
+    public function test_area_sync_merges_same_name_unmapped_area_without_losing_stop_links()
+    {
+        global $wpdb;
+        $areas = Olama_Transportation_DB::table('major_areas');
+        $mappings = Olama_Transportation_DB::table('area_mappings');
+        $stops = Olama_Transportation_DB::table('stops');
+        $now = current_time('mysql', true);
+
+        $wpdb->insert($areas, array('name' => 'نادي السباق', 'code' => 'CORE-96', 'status' => 'active', 'created_at' => $now, 'updated_at' => $now));
+        $target_id = (int) $wpdb->insert_id;
+        $wpdb->insert($mappings, array('oracle_region_id' => '96', 'oracle_region_name' => 'نادي السباق', 'major_area_id' => $target_id, 'created_at' => $now, 'updated_at' => $now));
+        $wpdb->insert($areas, array('name' => "نادي\u{00A0}السباق", 'code' => 'LEGACY-96', 'notes' => 'Keep this note', 'status' => 'active', 'created_at' => $now, 'updated_at' => $now));
+        $duplicate_id = (int) $wpdb->insert_id;
+        $wpdb->insert($stops, array('name' => 'Legacy stop', 'code' => 'LEGACY-STOP', 'latitude' => 31.95, 'longitude' => 35.91, 'major_area_id' => $duplicate_id, 'created_at' => $now, 'updated_at' => $now));
+
+        $method = new ReflectionMethod(Olama_Transportation_Area_Sync::class, 'merge_unmapped_duplicates');
+        $method->setAccessible(true);
+        $this->assertSame(1, $method->invoke(null, $target_id, 'نادي السباق', $now));
+        $this->assertSame($target_id, (int) $wpdb->get_var($wpdb->prepare("SELECT major_area_id FROM {$stops} WHERE code = %s", 'LEGACY-STOP')));
+        $this->assertSame('inactive', $wpdb->get_var($wpdb->prepare("SELECT status FROM {$areas} WHERE id = %d", $duplicate_id)));
+        $this->assertSame('Keep this note', $wpdb->get_var($wpdb->prepare("SELECT notes FROM {$areas} WHERE id = %d", $target_id)));
+    }
+
+    public function test_area_sync_does_not_merge_two_oracle_mapped_areas_with_same_name()
+    {
+        global $wpdb;
+        $areas = Olama_Transportation_DB::table('major_areas');
+        $mappings = Olama_Transportation_DB::table('area_mappings');
+        $now = current_time('mysql', true);
+        $area_ids = array();
+        foreach (array('96', '97') as $oracle_id) {
+            $wpdb->insert($areas, array('name' => 'Shared Oracle label', 'code' => 'CORE-' . $oracle_id, 'status' => 'active', 'created_at' => $now, 'updated_at' => $now));
+            $area_ids[] = (int) $wpdb->insert_id;
+            $wpdb->insert($mappings, array('oracle_region_id' => $oracle_id, 'oracle_region_name' => 'Shared Oracle label', 'major_area_id' => $wpdb->insert_id, 'created_at' => $now, 'updated_at' => $now));
+        }
+
+        $method = new ReflectionMethod(Olama_Transportation_Area_Sync::class, 'merge_unmapped_duplicates');
+        $method->setAccessible(true);
+        $this->assertSame(0, $method->invoke(null, $area_ids[0], 'Shared Oracle label', $now));
+        $this->assertSame(2, (int) $wpdb->get_var("SELECT COUNT(*) FROM {$areas} WHERE name = 'Shared Oracle label' AND status = 'active'"));
+    }
+
+    public function test_map_data_lists_an_area_once_when_it_has_multiple_oracle_mappings()
+    {
+        global $wpdb;
+        $areas = Olama_Transportation_DB::table('major_areas');
+        $mappings = Olama_Transportation_DB::table('area_mappings');
+        $now = current_time('mysql', true);
+        $wpdb->insert($areas, array('name' => 'One planning area', 'code' => 'ONE-AREA', 'status' => 'active', 'created_at' => $now, 'updated_at' => $now));
+        $area_id = (int) $wpdb->insert_id;
+        foreach (array('SOURCE-A', 'SOURCE-B') as $oracle_id) {
+            $wpdb->insert($mappings, array('oracle_region_id' => $oracle_id, 'oracle_region_name' => 'One planning area', 'major_area_id' => $area_id, 'created_at' => $now, 'updated_at' => $now));
+        }
+
+        $method = new ReflectionMethod(Olama_Transportation_Map_Data::class, 'areas');
+        $method->setAccessible(true);
+        $rows = array_values(array_filter($method->invoke(null), function ($area) use ($area_id) {
+            return (int) $area['id'] === $area_id;
+        }));
+        $this->assertCount(1, $rows);
+    }
 }

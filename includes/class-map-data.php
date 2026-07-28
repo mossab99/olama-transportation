@@ -164,8 +164,10 @@ class Olama_Transportation_Map_Data
         $areas = Olama_Transportation_DB::table('major_areas');
         $mappings = Olama_Transportation_DB::table('area_mappings');
         return $wpdb->get_results(
-            "SELECT a.id,a.name,a.code,a.color,a.boundary_geojson,a.status,m.oracle_region_id,m.oracle_region_name
-             FROM {$areas} a LEFT JOIN {$mappings} m ON m.major_area_id=a.id
+            "SELECT a.id,a.name,a.code,a.color,a.boundary_geojson,a.status,
+                    (SELECT m.oracle_region_id FROM {$mappings} m WHERE m.major_area_id=a.id ORDER BY m.id LIMIT 1) oracle_region_id,
+                    (SELECT m.oracle_region_name FROM {$mappings} m WHERE m.major_area_id=a.id ORDER BY m.id LIMIT 1) oracle_region_name
+             FROM {$areas} a
              WHERE a.status='active' ORDER BY a.name",
             ARRAY_A
         );
