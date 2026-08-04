@@ -92,7 +92,7 @@ class Olama_Transportation_Admin
         } elseif ($active_tab === 'assignments') {
             $selected_bus_id = isset($_GET['bus_id']) ? intval($_GET['bus_id']) : 0;
         }
-        if (in_array($active_tab, array('overview', 'planning'), true) && $selected_year_id) {
+        if (in_array($active_tab, array('overview', 'planning', 'import'), true) && $selected_year_id) {
             $summary = Olama_Transportation_Planning::report_summary($selected_year_id);
             $areas = Olama_Transportation_Repository::list_items('areas', array('per_page' => 500));
             $family_stops = Olama_Transportation_Repository::list_items('family-stops', array('per_page' => 100));
@@ -100,8 +100,6 @@ class Olama_Transportation_Admin
         if ($active_tab === 'routes') {
             $routes = Olama_Transportation_Routes::list_routes(array('academic_year_id' => $selected_year_id));
             $stops = Olama_Transportation_Repository::list_items('stops', array('per_page' => 500, 'status' => 'active'));
-        } elseif ($active_tab === 'import' && $selected_year_id) {
-            $registered_families = Olama_Transportation_Family_Locations::registered_families($selected_year_id);
         }
 
         include OLAMA_TRANSPORTATION_PATH . 'admin-views/transportation.php';
@@ -152,30 +150,92 @@ class Olama_Transportation_Admin
         $tab = isset($_GET['tab']) ? sanitize_key(wp_unslash($_GET['tab'])) : 'overview';
         if ($tab === 'planning') {
             $this->enqueue_style('olama-leaflet', 'assets/vendor/leaflet/leaflet.css');
-            $this->enqueue_style('olama-leaflet-draw', 'assets/vendor/leaflet-draw/leaflet.draw.css', array('olama-leaflet'));
-            $this->enqueue_style('olama-geographic-planner', 'assets/css/geographic-planner.css', array('olama-leaflet-draw'));
+            $this->enqueue_style('olama-geographic-planner', 'assets/css/geographic-planner.css', array('olama-leaflet'));
             wp_enqueue_script('olama-leaflet', OLAMA_TRANSPORTATION_URL . 'assets/vendor/leaflet/leaflet.js', array(), $this->asset_version(OLAMA_TRANSPORTATION_PATH . 'assets/vendor/leaflet/leaflet.js'), true);
-            wp_enqueue_script('olama-leaflet-draw', OLAMA_TRANSPORTATION_URL . 'assets/vendor/leaflet-draw/leaflet.draw.js', array('olama-leaflet'), $this->asset_version(OLAMA_TRANSPORTATION_PATH . 'assets/vendor/leaflet-draw/leaflet.draw.js'), true);
-            wp_enqueue_script('olama-geographic-planner', OLAMA_TRANSPORTATION_URL . 'assets/js/geographic-planner.js', array('olama-leaflet-draw'), $this->asset_version(OLAMA_TRANSPORTATION_PATH . 'assets/js/geographic-planner.js'), true);
+            wp_enqueue_script('olama-geographic-planner', OLAMA_TRANSPORTATION_URL . 'assets/js/geographic-planner.js', array('olama-leaflet'), $this->asset_version(OLAMA_TRANSPORTATION_PATH . 'assets/js/geographic-planner.js'), true);
             wp_localize_script('olama-geographic-planner', 'olamaPlanner', array(
                 'restUrl' => esc_url_raw(rest_url('olama-transportation/v1/')),
                 'restNonce' => wp_create_nonce('wp_rest'),
                 'canManage' => Olama_School_Permissions::can('olama_manage_transport_buses'),
-                'canApprove' => Olama_School_Permissions::can('olama_approve_transport_routes') || Olama_School_Permissions::can('olama_manage_transport_buses'),
                 'tileUrl' => 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
                 'tileAttribution' => '&copy; OpenStreetMap contributors',
                 'i18n' => array(
-                    'available' => Olama_School_Helpers::translate('Available'), 'draft' => Olama_School_Helpers::translate('Draft'),
-                    'approved' => Olama_School_Helpers::translate('Approved'), 'edit' => Olama_School_Helpers::translate('Edit'),
-                    'view' => Olama_School_Helpers::translate('View'), 'approve' => Olama_School_Helpers::translate('Approve'),
-                    'revert' => Olama_School_Helpers::translate('Revert to Draft'), 'archive' => Olama_School_Helpers::translate('Archive'),
-                    'confirmArchive' => Olama_School_Helpers::translate('Archive this planning group?'),
-                    'discard' => Olama_School_Helpers::translate('Discard unsaved planning changes?'),
-                    'withinCapacity' => Olama_School_Helpers::translate('Within capacity'),
-                    'nearCapacity' => Olama_School_Helpers::translate('Near capacity'),
-                    'capacityExceeded' => Olama_School_Helpers::translate('Capacity exceeded by'),
-                    'saved' => Olama_School_Helpers::translate('Planning group saved.'),
-                    'noGroups' => Olama_School_Helpers::translate('No planning groups.'),
+                    'assigned' => Olama_School_Helpers::translate('Assigned'), 'edit' => Olama_School_Helpers::translate('Edit'),
+                    'assignEdit' => Olama_School_Helpers::translate('Assign/Edit Bus Trip'),
+                    'viewFamilies' => Olama_School_Helpers::translate('View Families'), 'remove' => Olama_School_Helpers::translate('Remove Assignment'),
+                    'confirmRemove' => Olama_School_Helpers::translate('Remove this area bus-trip assignment?'),
+                    'saved' => Olama_School_Helpers::translate('Area bus-trip assignment saved.'),
+                    'noStudents' => Olama_School_Helpers::translate('No Students'),
+                    'areaNotAllocated' => Olama_School_Helpers::translate('Area Not Allocated'),
+                    'capacityProblem' => Olama_School_Helpers::translate('Over Capacity'),
+                    'families' => Olama_School_Helpers::translate('Families'),
+                    'students' => Olama_School_Helpers::translate('Students'),
+                    'map' => Olama_School_Helpers::translate('Map'),
+                    'move' => Olama_School_Helpers::translate('Move to Planning Area'),
+                    'allAreas' => Olama_School_Helpers::translate('All areas'), 'allBuses' => Olama_School_Helpers::translate('All buses'),
+                    'allTrips' => Olama_School_Helpers::translate('All trips'), 'selectBus' => Olama_School_Helpers::translate('Select Bus'),
+                    'selectTrip' => Olama_School_Helpers::translate('Select Trip'), 'school' => Olama_School_Helpers::translate('School'),
+                    'trip' => Olama_School_Helpers::translate('Trip'), 'areaStudents' => Olama_School_Helpers::translate('Area students'),
+                    'currentTripStudents' => Olama_School_Helpers::translate('Current bus-trip students'), 'resultingSeats' => Olama_School_Helpers::translate('Resulting used seats'),
+                    'capacity' => Olama_School_Helpers::translate('Capacity'), 'remaining' => Olama_School_Helpers::translate('Remaining'),
+                    'familyMoved' => Olama_School_Helpers::translate('Family planning area updated.'),
+                    'failed' => Olama_School_Helpers::translate('Operation failed.'),
+                    'loading' => Olama_School_Helpers::translate('Loadingâ€¦'),
+                    'removed' => Olama_School_Helpers::translate('Area assignment removed.'),
+                    'areas' => Olama_School_Helpers::translate('areas'),
+                    'previous' => Olama_School_Helpers::translate('Previous'), 'next' => Olama_School_Helpers::translate('Next'),
+                    'selectArea' => Olama_School_Helpers::translate('Select Area'),
+                    'noAreas' => Olama_School_Helpers::translate('No areas match the current filters.'),
+                    'noCoordinates' => Olama_School_Helpers::translate('No mapped family coordinates are available for this area.'),
+                    'noValidLocations' => Olama_School_Helpers::translate('No valid map locations match the current filters.'),
+                    'previewIncomplete' => Olama_School_Helpers::translate('Preview incomplete. Complete the fields, then preview capacity.'),
+                    'previewing' => Olama_School_Helpers::translate('Confirming capacity with the serverâ€¦'),
+                    'completeFields' => Olama_School_Helpers::translate('Select an area, bus, and valid trip before previewing.'),
+                    'effectiveCapacity' => Olama_School_Helpers::translate('Effective capacity'), 'override' => Olama_School_Helpers::translate('planning override'),
+                    'noTrips' => Olama_School_Helpers::translate('This bus has no valid trips in the selected direction.'),
+                    'areaFamilies' => Olama_School_Helpers::translate('Area families'), 'utilization' => Olama_School_Helpers::translate('Utilization'),
+                    'currentAssignmentStudents' => Olama_School_Helpers::translate('Current assignment being replaced'), 'demandSource' => Olama_School_Helpers::translate('Demand source'),
+                    'confirmSave' => Olama_School_Helpers::translate('Save this area allocation?'),
+                    'removeEffect' => Olama_School_Helpers::translate('Families retain their Planning Area but become bus-trip unallocated.'),
+                    'newAssignment' => Olama_School_Helpers::translate('Assign Area to Bus Trip'), 'editAssignment' => Olama_School_Helpers::translate('Edit Area Bus-Trip Assignment'),
+                    'noFamilies' => Olama_School_Helpers::translate('No matching families in this area.'), 'selectFamilies' => Olama_School_Helpers::translate('Select families and a destination area first.'),
+                    'statuses' => array(
+                        'assigned'=>Olama_School_Helpers::translate('Assigned'),'area_not_allocated'=>Olama_School_Helpers::translate('Area Not Allocated'),
+                        'missing_area'=>Olama_School_Helpers::translate('Missing Area'),'over_capacity'=>Olama_School_Helpers::translate('Over Capacity'),
+                        'near_capacity'=>Olama_School_Helpers::translate('Near Capacity'),'at_capacity'=>Olama_School_Helpers::translate('At Capacity'),
+                        'within_capacity'=>Olama_School_Helpers::translate('Within Capacity'),'no_student_demand'=>Olama_School_Helpers::translate('No Student Demand'),
+                        'no_students'=>Olama_School_Helpers::translate('No Students'),'missing_locations'=>Olama_School_Helpers::translate('Missing Locations'),
+                        'invalid_bus'=>Olama_School_Helpers::translate('Invalid Bus'),'invalid_bus_capacity'=>Olama_School_Helpers::translate('Invalid Bus Capacity'),
+                        'invalid_trip'=>Olama_School_Helpers::translate('Invalid Trip'),'approved'=>Olama_School_Helpers::translate('Approved'),
+                        'needs_review'=>Olama_School_Helpers::translate('Needs Review'),'missing_location'=>Olama_School_Helpers::translate('Missing Location'),
+                        'invalid_location'=>Olama_School_Helpers::translate('Invalid Location'),
+                        'transportation_enrollments'=>Olama_School_Helpers::translate('Transportation enrollments'),
+                        'academic_registration_fallback'=>Olama_School_Helpers::translate('Academic registration fallback'),
+                    ),
+                ),
+            ));
+        } elseif ($tab === 'import') {
+            $path = OLAMA_TRANSPORTATION_PATH . 'assets/js/family-locations.js';
+            wp_enqueue_script('olama-family-locations', OLAMA_TRANSPORTATION_URL . 'assets/js/family-locations.js', array(), $this->asset_version($path), true);
+            wp_localize_script('olama-family-locations', 'olamaFamilyLocations', array(
+                'restUrl' => esc_url_raw(rest_url('olama-transportation/v1/')), 'restNonce' => wp_create_nonce('wp_rest'),
+                'canManage' => Olama_School_Permissions::can('olama_manage_transport_buses'),
+                'areas' => array_values(array_map(function ($area) { return array('id'=>(int)$area['id'],'name'=>$area['name']); }, array_filter(Olama_Transportation_Repository::list_items('areas', array('per_page'=>500)), function ($area) { return $area['status']==='active'; }))),
+                'i18n' => array(
+                    'loading'=>Olama_School_Helpers::translate('Loading…'),'saved'=>Olama_School_Helpers::translate('Saved.'),'saveFailed'=>Olama_School_Helpers::translate('Save failed.'),
+                    'unsaved'=>Olama_School_Helpers::translate('Unsaved changes'),'saving'=>Olama_School_Helpers::translate('Saving…'),'saveArea'=>Olama_School_Helpers::translate('Save Area'),
+                    'clear'=>Olama_School_Helpers::translate('Clear'),'details'=>Olama_School_Helpers::translate('Details'),'map'=>Olama_School_Helpers::translate('Map'),
+                    'missingLocation'=>Olama_School_Helpers::translate('Missing Location'),'invalidLocation'=>Olama_School_Helpers::translate('Invalid Location'),
+                    'needsReview'=>Olama_School_Helpers::translate('Needs review'),'approved'=>Olama_School_Helpers::translate('Approved'),
+                    'morning'=>Olama_School_Helpers::translate('Morning'),'afternoon'=>Olama_School_Helpers::translate('Afternoon'),'trip'=>Olama_School_Helpers::translate('Trip'),
+                    'assigned'=>Olama_School_Helpers::translate('Assigned'),'missingArea'=>Olama_School_Helpers::translate('Missing Area'),
+                    'areaNotAllocated'=>Olama_School_Helpers::translate('Area Not Allocated'),'capacityProblem'=>Olama_School_Helpers::translate('Capacity Problem'),
+                    'noMatches'=>Olama_School_Helpers::translate('No matching families. Adjust or reset the filters.'),'selected'=>Olama_School_Helpers::translate('selected'),
+                    'bulkComplete'=>Olama_School_Helpers::translate('%d families updated successfully.'),'location'=>Olama_School_Helpers::translate('WhatsApp Location'),
+                    'saveLocation'=>Olama_School_Helpers::translate('Save Location'),'coordinates'=>Olama_School_Helpers::translate('Coordinates'),
+                    'phone'=>Olama_School_Helpers::translate('Phone'),'source'=>Olama_School_Helpers::translate('Source'),'assignmentSource'=>Olama_School_Helpers::translate('Assignment Source'),
+                    'assignedAt'=>Olama_School_Helpers::translate('Assigned At'),'notes'=>Olama_School_Helpers::translate('Notes'),'unassigned'=>Olama_School_Helpers::translate('Unassigned'),
+                    'networkError'=>Olama_School_Helpers::translate('The request failed. Check the connection and try again.'),
                 ),
             ));
         }

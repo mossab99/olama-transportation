@@ -154,8 +154,10 @@ class Olama_Transportation_Area_Sync
             "UPDATE {$stops} fs
              INNER JOIN {$families} f ON f.family_uid = fs.family_uid OR (fs.family_uid IS NULL AND f.oracle_family_id = fs.oracle_family_id)
              INNER JOIN {$mappings} m ON m.oracle_region_id = f.trans_region_id
-             SET fs.major_area_id = m.major_area_id, fs.updated_at = %s
-             WHERE fs.major_area_id IS NULL",
+             SET fs.major_area_id = m.major_area_id, fs.area_assignment_source='core',
+                 fs.area_assigned_by=NULL, fs.area_assigned_at=%s, fs.updated_at = %s
+             WHERE fs.major_area_id IS NULL AND fs.area_assignment_source <> 'manual'",
+            $now,
             $now
         ));
         if ($audit && $updated) {
@@ -233,11 +235,10 @@ class Olama_Transportation_Area_Sync
         $rows = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$table} WHERE major_area_id = %d", $duplicate_id), ARRAY_A);
         foreach ($rows as $row) {
             $existing = $wpdb->get_var($wpdb->prepare(
-                "SELECT id FROM {$table} WHERE academic_year_id = %d AND direction = %s AND major_area_id = %d AND bus_id = %d LIMIT 1",
+                "SELECT id FROM {$table} WHERE academic_year_id = %d AND direction = %s AND major_area_id = %d LIMIT 1",
                 $row['academic_year_id'],
                 $row['direction'],
-                $target_id,
-                $row['bus_id']
+                $target_id
             ));
             if ($existing) {
                 $wpdb->update($table, array('status' => 'inactive'), array('id' => $row['id']));

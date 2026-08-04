@@ -2,43 +2,53 @@
 
 ```text
 Oracle ERP (read only)
-  -> Oracle Bridge
-     -> Olama Oracle Sync
-        -> Olama Core families, students, student-years, buses, regions
-           -> Olama Transportation
-              -> family locations + transport enrollment demand
-              -> local area projection + geographic groups
-              -> legacy annual assignments (separate)
-              -> immutable route versions + optional optimizer (separate)
+  -> Olama Oracle Sync
+     -> Olama Core families, students, academic years, buses, regions
+        -> Olama Transportation
+           -> family pickup location + family planning-area classification
+           -> normalized direction-specific enrollment demand (or explicit fallback)
+           -> academic-year + direction + area -> bus trip allocation
+           -> effective family/student allocation resolver
+           -> legacy polygon history (read only in the active UI)
+           -> legacy annual student assignments and route versions (separate)
 ```
 
-## Geographic planning boundary
+## Active planning boundary
 
-`Olama_Transportation_Area_Sync` projects `olama_core()->transport_master()->get_regions(true)` into existing major areas/mappings. Only Oracle-active regions are exposed to planning; existing color, boundary GeoJSON, and notes are preserved. Regions missing from the active result are made inactive, never deleted. Family-stop backfill changes only stops with no current area so a reviewed/manual classification is preserved.
+`Olama_Transportation_Family_Area_Assignments` owns manual classification of `family_stops.major_area_id`. Single and bulk changes accept stable Core family UIDs and create a location-less placeholder when no family-stop row exists. Latitude/longitude remain nullable until captured. Changes preserve coordinates and unrelated fields, set manual audit metadata, never update students, and return the resulting effective allocation. Bulk changes validate all families before beginning a transaction and lock all selected stop rows before updating.
 
-`Olama_Transportation_Map_Data` is the single normalized demand provider. It selects one demand mode for the whole academic year: direction-specific active transport enrollments, or academic-registration fallback when the enrollment table has no rows for that year. It combines family identity, Core transport region, family stop, area mapping, and active group assignment into one map response.
+`Olama_Transportation_Area_Trip_Assignments` owns the unique academic-year + direction + area allocation. It validates active areas, active buses, effective capacity, and morning/afternoon trip range. Several areas can share a bus trip. Save locks the relevant area/assignment row, selected bus row, and competing trip rows, then recalculates area demand and aggregate trip demand before persistence. Browser counts are ignored. Deletion is non-destructive (`status=inactive`).
 
-`Olama_Transportation_Geographic_Planning` owns group persistence. Draft create/update and approval use transactions and row locks, re-fetch demand/location records, detect family-direction and bus-trip conflicts, enforce the bus direction's configured trip range, and calculate effective capacity per trip. Browser-provided counts, coordinates, assignments, and capacity are ignored.
+`Olama_Transportation_Effective_Assignments` is the normalized read model used by area tables, capacity summaries, family detail, and map data. It resolves:
 
-Explicit group-family rows are authoritative. Polygon GeoJSON is selection metadata only. Membership stores the demand count, coordinates, area, and region-name snapshot used for that planning decision.
+`student -> family -> family stop -> major_area_id -> active area allocation -> bus/trip`
 
-## Lifecycle, permissions, and audits
+The resolver returns assignment status, location validity, direction student count, demand mode, effective capacity, aggregate used/remaining seats, and utilization. Transportation enrollments are selected for the whole year when any active enrollment exists; otherwise academic registration is used for the whole context with an explicit warning. The two sources are never silently mixed.
 
-- `draft`: editable by transportation management.
-- `approved`: immutable until reverted by an approval user.
-- `archived`: historical and non-blocking; never hard-deleted by the planner.
+## Area synchronization
+
+`Olama_Transportation_Area_Sync` projects active Core regions into local major areas and mappings. Existing local color, notes and boundary data are preserved. Core-mapped areas missing from Core may be deactivated; unmapped local planning areas are not deactivated. Backfill only fills `major_area_id IS NULL` when the stop has not been manually classified/cleared and records Core source metadata. WhatsApp/manual coordinate updates and imports preserve a populated area and manual audit metadata.
+
+Oracle Area and Planning Area are deliberately separate. Oracle Area is read-only geography from Core. Planning Area is Transportation-owned operational classification. Existing boundary GeoJSON may be rendered as reference only and never determines family membership.
+
+## Capacity and concurrency
+
+Capacity is scoped to academic year + direction + bus + trip. Positive `planning_capacity` overrides `passenger_capacity`. Preview excludes the area's current assignment when editing, sums all other areas on the selected trip, adds current area demand, and returns capacity, remaining seats, utilization, status, and a hash. Save repeats the same calculation under locks; a changed hash produces HTTP 409 and updated capacity. Direction demand counts distinct active enrollment students with the matching direction flag. The selected bus row is the serialization lock for concurrent saves, so requests targeting different areas on the same physical bus cannot both validate from the same stale capacity state. Assignment rows and competing trip rows are also locked. Moving families later can surface a `capacity_problem` dynamically; the system does not silently split an area or mutate student records.
+
+## Legacy separation
+
+`wp_olama_transport_planning_groups` and `wp_olama_transport_planning_group_families` remain intact. Their REST routes are deprecated compatibility APIs. The primary UI cannot create or edit polygons and does not enqueue Leaflet Draw. Legacy membership never participates in effective assignment resolution; the admin shows a read-only historical table.
+
+`wp_olama_student_bus_assignments` remains the legacy annual student-to-bus workflow. Area planning never writes it because it cannot represent direction, trip number, or family inheritance. Route versions, optimization, tracking, imports, and Core bus synchronization remain independent.
+
+## Permissions and audits
+
 - View: `olama_access_transport_mgmt`.
-- Draft create/edit: `olama_manage_transport_buses`.
-- Approve/revert/archive: `olama_approve_transport_routes`, with the established management fallback.
+- Manage family areas and area trips: `olama_manage_transport_buses`.
+- Legacy group lifecycle retains its prior approval convention only for compatibility.
 
-Area refresh, group lifecycle, membership, bus trip-count, and planning-capacity changes use `Olama_Transportation_Audit::record()` with aggregate snapshots rather than student-sensitive payloads.
-
-## Separation from existing workflows
-
-The legacy `wp_olama_student_bus_assignments` table still represents one annual student-to-bus relationship. Geographic planning does not write it because it cannot represent direction, trip number, or family membership. Existing Student Assignments behavior remains intact.
-
-Route versions remain a later operational stage. Saving or approving a geographic group does not invoke the optimizer or create/update a route version. The existing route CRUD, publication, Google/webhook abstraction, and tracking configuration are unchanged.
+Audits contain identifiers and aggregate calculations, not student identity. Events include family assign/clear/bulk, area-trip assign/update/unassign, and rejected capacity attempts.
 
 ## Current limitations
 
-No automatic clustering/group creation, route ordering, travel-time matrix, arrival estimate, trip timing dependency, shared pickup generation, GPS/driver/parent app, attendance, or notifications are part of the 2.3 MVP.
+No automatic area splitting, marker clustering, route generation from allocations, stop ordering, travel-time matrix, arrival estimates, shared pickup generation, attendance, notification, or automatic legacy-group conversion is included in 2.4.

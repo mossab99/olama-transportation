@@ -365,16 +365,58 @@
     function filterFamilyLocations() {
         var query = ($('#family-location-search').val() || '').toLowerCase().trim();
         var missingOnly = $('#family-location-missing-only').is(':checked');
+        var area = $('#family-location-area-filter').val() || 'all';
+        var locationStatus = $('#family-location-status-filter').val() || 'all';
         $('[data-family-location-row]').each(function () {
             var $row = $(this);
             var matchesSearch = !query || $row.text().toLowerCase().indexOf(query) !== -1;
             var matchesMissing = !missingOnly || $row.attr('data-has-location') !== '1';
-            $row.toggle(matchesSearch && matchesMissing);
+            var rowArea = $row.attr('data-area-id') || '0';
+            var matchesArea = area === 'all' || (area === 'unassigned' ? rowArea === '0' : rowArea === area);
+            var matchesStatus = locationStatus === 'all' || $row.attr('data-location-status') === locationStatus;
+            $row.toggle(matchesSearch && matchesMissing && matchesArea && matchesStatus);
         });
     }
 
     $('#family-location-search').on('input', filterFamilyLocations);
     $('#family-location-missing-only').on('change', filterFamilyLocations);
+    $('#family-location-area-filter, #family-location-status-filter').on('change', filterFamilyLocations);
+
+    $('#family-location-select-all').on('change', function () {
+        $('.family-location-select:enabled:visible').prop('checked', this.checked);
+    });
+
+    function saveFamilyArea($row, areaId) {
+        var stopId = parseInt($row.find('.olama-save-family-area').data('stop-id'), 10);
+        if (!stopId) return Promise.reject(new Error('Save the family location before assigning a planning area.'));
+        return rest('family-locations/' + stopId + '/area', {method: 'POST', body: {major_area_id: areaId || 0}}).then(function () {
+            $row.attr('data-area-id', areaId || '0');
+            $row.find('.family-planning-area').val(areaId || '');
+            filterFamilyLocations();
+        });
+    }
+
+    $(document).on('click', '.olama-save-family-area', function () {
+        var $button = $(this), $row = $button.closest('tr');
+        $button.prop('disabled', true);
+        saveFamilyArea($row, parseInt($row.find('.family-planning-area').val() || 0, 10))
+            .then(function () { window.location.reload(); })
+            .catch(function (error) { alert(error.message); $button.prop('disabled', false); });
+    });
+
+    $(document).on('click', '.olama-clear-family-area', function () {
+        var $button = $(this), $row = $button.closest('tr');
+        saveFamilyArea($row, 0).then(function () { window.location.reload(); }).catch(function (error) { alert(error.message); });
+    });
+
+    $('#family-location-bulk-save').on('click', function () {
+        var ids = $('.family-location-select:checked').map(function () { return parseInt(this.value, 10); }).get();
+        if (!ids.length) { alert('Select at least one family location.'); return; }
+        var $button = $(this).prop('disabled', true);
+        rest('family-locations/bulk-area', {method: 'POST', body: {family_stop_ids: ids, major_area_id: parseInt($('#family-location-bulk-area').val() || 0, 10)}})
+            .then(function () { window.location.reload(); })
+            .catch(function (error) { alert(error.message); $button.prop('disabled', false); });
+    });
 
     $('#copy-family-location-template').on('click', function () {
         var text = $('#family-location-whatsapp-template').val();
@@ -425,6 +467,12 @@
             $row.find('.olama-view-family-location')
                 .attr('href', response.map_url)
                 .removeClass('is-hidden');
+            var stopId = response.family_stop && response.family_stop.id;
+            if (stopId) {
+                $row.find('.family-location-select').val(stopId).prop('disabled', false);
+                $row.find('.olama-save-family-area, .olama-clear-family-area').data('stop-id', stopId).prop('disabled', false);
+                $row.find('.family-planning-area').prop('disabled', false);
+            }
             $result.addClass('is-success').text(response.message);
             $button.prop('disabled', false);
             filterFamilyLocations();

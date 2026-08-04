@@ -89,12 +89,15 @@ class Olama_Transportation_DB
             id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
             family_uid varchar(100) DEFAULT NULL,
             oracle_family_id varchar(100) NOT NULL,
-            latitude decimal(10,7) NOT NULL,
-            longitude decimal(10,7) NOT NULL,
+            latitude decimal(10,7) DEFAULT NULL,
+            longitude decimal(10,7) DEFAULT NULL,
             maps_url text DEFAULT NULL,
             address_text text DEFAULT NULL,
             area_text varchar(150) DEFAULT NULL,
             major_area_id bigint(20) UNSIGNED DEFAULT NULL,
+            area_assignment_source varchar(30) NOT NULL DEFAULT 'core',
+            area_assigned_by bigint(20) UNSIGNED DEFAULT NULL,
+            area_assigned_at datetime DEFAULT NULL,
             approved_stop_id bigint(20) UNSIGNED DEFAULT NULL,
             source varchar(30) NOT NULL DEFAULT 'whatsapp_excel',
             source_row_reference varchar(100) DEFAULT NULL,
@@ -163,15 +166,20 @@ class Olama_Transportation_DB
             direction varchar(20) NOT NULL,
             major_area_id bigint(20) UNSIGNED NOT NULL,
             bus_id bigint(20) UNSIGNED NOT NULL,
+            trip_number tinyint(3) UNSIGNED NOT NULL DEFAULT 1,
+            notes text DEFAULT NULL,
             is_locked tinyint(1) NOT NULL DEFAULT 0,
             status varchar(20) NOT NULL DEFAULT 'active',
             created_by bigint(20) UNSIGNED DEFAULT NULL,
+            updated_by bigint(20) UNSIGNED DEFAULT NULL,
             created_at datetime NOT NULL,
             updated_at datetime NOT NULL,
             PRIMARY KEY  (id),
-            UNIQUE KEY year_direction_area_bus (academic_year_id, direction, major_area_id, bus_id),
+            UNIQUE KEY year_direction_area (academic_year_id, direction, major_area_id),
+            KEY bus_trip (academic_year_id, direction, bus_id, trip_number),
             KEY bus_year (bus_id, academic_year_id),
-            KEY area_year (major_area_id, academic_year_id)
+            KEY area_year (major_area_id, academic_year_id),
+            KEY status (status)
         ) $cc;");
 
         dbDelta("CREATE TABLE {$p}olama_transport_route_versions (
@@ -343,7 +351,43 @@ class Olama_Transportation_DB
         ) $cc;");
 
         self::normalize_core_bus_projection();
+        self::allow_missing_family_coordinates();
+        self::upgrade_area_assignment_schema();
         self::ensure_legacy_assignment_links();
+    }
+
+    private static function allow_missing_family_coordinates()
+    {
+        global $wpdb;
+        $table = self::table('family_stops');
+        // dbDelta does not reliably relax NOT NULL columns on existing sites.
+        $wpdb->query("ALTER TABLE {$table} MODIFY latitude decimal(10,7) NULL DEFAULT NULL");
+        $wpdb->query("ALTER TABLE {$table} MODIFY longitude decimal(10,7) NULL DEFAULT NULL");
+    }
+
+    private static function upgrade_area_assignment_schema()
+    {
+        global $wpdb;
+        $table = self::table('area_bus_assignments');
+        $indexes = $wpdb->get_results("SHOW INDEX FROM {$table}", ARRAY_A);
+        $by_name = array();
+        foreach ($indexes as $index) {
+            $by_name[$index['Key_name']][] = $index;
+        }
+        if (isset($by_name['year_direction_area_bus'])) {
+            $wpdb->query("ALTER TABLE {$table} DROP INDEX year_direction_area_bus");
+        }
+        if (!isset($by_name['year_direction_area'])) {
+            // Existing installations should not normally contain duplicates. If
+            // they do, retain every row and let the service deactivate extras;
+            // the migration remains non-destructive and can be rerun after review.
+            $duplicates = (int) $wpdb->get_var(
+                "SELECT COUNT(*) FROM (SELECT 1 FROM {$table} GROUP BY academic_year_id,direction,major_area_id HAVING COUNT(*) > 1) d"
+            );
+            if (!$duplicates) {
+                $wpdb->query("ALTER TABLE {$table} ADD UNIQUE KEY year_direction_area (academic_year_id,direction,major_area_id)");
+            }
+        }
     }
 
     private static function normalize_core_bus_projection()

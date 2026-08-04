@@ -23,28 +23,88 @@ class Olama_Transportation_Family_Locations
         $student_years = olama_core()->read_models()->table('student_years');
         $stops = Olama_Transportation_DB::table('family_stops');
 
-        return $wpdb->get_results($wpdb->prepare(
+        $rows = $wpdb->get_results($wpdb->prepare(
             "SELECT f.family_uid, f.oracle_family_id,
                     COALESCE(NULLIF(f.sponsor_full_name, ''), NULLIF(f.father_name, ''), f.oracle_family_id) AS family_name,
                     COALESCE(NULLIF(f.primary_mobile, ''), NULLIF(f.father_mobile, ''), f.mother_mobile) AS mobile,
                     COALESCE(NULLIF(f.family_address, ''), f.address) AS oracle_address,
                     COUNT(DISTINCT sy.student_uid) AS registered_students,
-                    fs.id AS family_stop_id, fs.latitude, fs.longitude,
-                    fs.maps_url, fs.verification_status, fs.updated_at AS location_updated_at
+                    f.trans_region_id, f.trans_region_name,
+                    fs.id AS family_stop_id, fs.latitude, fs.longitude, fs.major_area_id,
+                    fs.area_assignment_source, fs.area_assigned_by, fs.area_assigned_at,
+                    fs.source AS location_source, fs.notes, fs.maps_url, fs.verification_status, fs.updated_at AS location_updated_at,
+                    a.name AS major_area_name
              FROM {$student_years} sy
              INNER JOIN {$families} f ON f.family_uid = sy.family_uid
              LEFT JOIN {$stops} fs
                ON fs.family_uid = f.family_uid
                OR (fs.family_uid IS NULL AND fs.oracle_family_id = f.oracle_family_id)
+             LEFT JOIN " . Olama_Transportation_DB::table('major_areas') . " a ON a.id=fs.major_area_id
              WHERE sy.study_year IN (%s, %s)
              GROUP BY f.family_uid, f.oracle_family_id, f.sponsor_full_name, f.father_name,
                       f.primary_mobile, f.father_mobile, f.mother_mobile,
-                      f.family_address, f.address, fs.id, fs.latitude, fs.longitude,
-                      fs.maps_url, fs.verification_status, fs.updated_at
+                      f.family_address, f.address, f.trans_region_id, f.trans_region_name,
+                      fs.id, fs.latitude, fs.longitude, fs.major_area_id, fs.area_assignment_source,
+                      fs.area_assigned_by, fs.area_assigned_at, fs.source, fs.notes,
+                      fs.maps_url, fs.verification_status, fs.updated_at, a.name
              ORDER BY family_name, f.oracle_family_id",
             $study_year,
             $alternate_year
         ), ARRAY_A);
+        $morning = Olama_Transportation_Effective_Assignments::resolve($academic_year_id, 'morning');
+        $afternoon = Olama_Transportation_Effective_Assignments::resolve($academic_year_id, 'afternoon');
+        $effective = array('morning' => array(), 'afternoon' => array());
+        foreach (array('morning' => $morning, 'afternoon' => $afternoon) as $direction => $resolved) {
+            if (is_wp_error($resolved)) {
+                continue;
+            }
+            foreach ($resolved['families'] as $family) {
+                $effective[$direction][$family['family_uid']] = $family;
+            }
+        }
+        foreach ($rows as &$row) {
+            $row['effective_morning'] = $effective['morning'][$row['family_uid']] ?? null;
+            $row['effective_afternoon'] = $effective['afternoon'][$row['family_uid']] ?? null;
+        }
+        unset($row);
+        return $rows;
+    }
+
+    public static function admin_list($academic_year_id, $args = array())
+    {
+        $rows = self::registered_families($academic_year_id);
+        $search = trim(sanitize_text_field($args['search'] ?? ''));
+        $area = sanitize_text_field((string) ($args['major_area_id'] ?? ''));
+        $location = sanitize_key($args['location_status'] ?? 'all');
+        $morning = sanitize_key($args['morning_status'] ?? 'all');
+        $afternoon = sanitize_key($args['afternoon_status'] ?? 'all');
+        $missing_only = !empty($args['missing_locations']);
+        $filtered = array_values(array_filter($rows, function ($row) use ($search, $area, $location, $morning, $afternoon, $missing_only) {
+            $has_location = $row['latitude'] !== null && $row['longitude'] !== null;
+            $location_status = !$has_location ? 'missing_location' : sanitize_key($row['verification_status'] ?: 'invalid_location');
+            if ($search !== '' && stripos($row['family_name'] . ' ' . $row['oracle_family_id'] . ' ' . ($row['mobile'] ?? ''), $search) === false) return false;
+            if ($area === 'unassigned' && !empty($row['major_area_id'])) return false;
+            if ($area !== '' && $area !== 'all' && $area !== 'unassigned' && (int) $row['major_area_id'] !== absint($area)) return false;
+            if ($missing_only && $has_location) return false;
+            if ($location !== 'all' && $location_status !== $location) return false;
+            if ($morning !== 'all' && sanitize_key($row['effective_morning']['assignment_status'] ?? 'missing_area') !== $morning) return false;
+            if ($afternoon !== 'all' && sanitize_key($row['effective_afternoon']['assignment_status'] ?? 'missing_area') !== $afternoon) return false;
+            return true;
+        }));
+        $per_page = min(100, max(20, absint($args['per_page'] ?? 20)));
+        $page = max(1, absint($args['page'] ?? 1));
+        $total = count($filtered);
+        return array(
+            'items' => array_slice($filtered, ($page - 1) * $per_page, $per_page),
+            'pagination' => array('page' => $page, 'per_page' => $per_page, 'total' => $total, 'total_pages' => max(1, (int) ceil($total / $per_page))),
+            'metrics' => array(
+                'registered_transportation_families' => count($rows),
+                'families_with_valid_coordinates' => count(array_filter($rows, function ($row) { return $row['latitude'] !== null && $row['longitude'] !== null; })),
+                'families_missing_coordinates' => count(array_filter($rows, function ($row) { return $row['latitude'] === null || $row['longitude'] === null; })),
+                'families_with_planning_areas' => count(array_filter($rows, function ($row) { return !empty($row['major_area_id']); })),
+                'families_without_planning_areas' => count(array_filter($rows, function ($row) { return empty($row['major_area_id']); })),
+            ),
+        );
     }
 
     public static function save($family_uid, $input, $notes = '')

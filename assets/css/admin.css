@@ -320,8 +320,16 @@
     width: min(420px, 70vw);
 }
 
+.olama-family-location-tools{display:flex;flex-wrap:wrap;align-items:end;gap:10px}.olama-family-location-tools label{display:flex;flex-direction:column;gap:4px}
+.olama-family-location-table{width:100%;table-layout:auto}.olama-family-location-table td,.olama-family-location-table th{vertical-align:top;overflow-wrap:anywhere}.olama-family-location-table td small{display:block;color:#646970;margin-top:4px}.olama-family-location-table select{width:100%;max-width:220px}
+#olama-family-locations-app .olama-family-location-table-wrap{overflow-x:visible;max-height:none}
+#olama-family-locations-app .olama-family-location-table th:nth-child(1){width:34px}#olama-family-locations-app .olama-family-location-table th:nth-child(2){width:17%}#olama-family-locations-app .olama-family-location-table th:nth-child(3){width:7%}#olama-family-locations-app .olama-family-location-table th:nth-child(4){width:14%}#olama-family-locations-app .olama-family-location-table th:nth-child(5){width:21%}#olama-family-locations-app .olama-family-location-table th:nth-child(6){width:12%}#olama-family-locations-app .olama-family-location-table th:nth-child(7){width:17%}#olama-family-locations-app .olama-family-location-table th:nth-child(8){width:12%}
+.olama-inline-actions,.olama-family-location-table td:last-child{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}.olama-row-feedback{min-height:18px}.olama-row-feedback.is-warning{color:#996800}.olama-row-feedback.is-error{color:#b32d2e}.olama-row-feedback.is-loading{color:#135e96}.olama-effective-line{margin-bottom:4px;line-height:1.35}.olama-bulk-area-bar,.olama-pagination{display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:10px 0}.olama-bulk-area-bar{background:#f6f7f7;border-block:1px solid #dcdcde;padding-inline:10px}.olama-pagination{justify-content:flex-end}.olama-empty-state{text-align:center;padding:32px!important}.olama-empty-state.is-error{color:#b32d2e}.olama-operation-result.is-success{color:#11663f}.olama-operation-result.is-error{color:#b32d2e}
+.olama-family-dialog{width:min(680px,calc(100vw - 40px));border:0;border-radius:8px;padding:24px;box-shadow:0 12px 50px rgba(0,0,0,.3)}.olama-family-dialog::backdrop{background:rgba(0,0,0,.45)}.olama-dialog-close{position:absolute;inset-block-start:8px;inset-inline-end:10px;border:0;background:transparent;font-size:26px;cursor:pointer}.olama-family-detail-grid{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px}.olama-family-detail-grid dt{font-weight:600}.olama-family-detail-grid dd{margin:0}.olama-family-dialog label{display:block;margin:14px 0 8px}.olama-family-dialog :focus-visible,#olama-family-locations-app :focus-visible{outline:2px solid #2271b1;outline-offset:2px}
+
 .olama-family-location-table-wrap {
-    overflow: auto;
+    overflow-x: visible;
+    overflow-y: auto;
     max-height: 65vh;
     border: 1px solid #dcdcde;
 }
@@ -376,4 +384,5 @@
         align-items: stretch;
         flex-direction: column;
     }
+    #olama-family-locations-app .olama-family-location-table thead{display:none}#olama-family-locations-app .olama-family-location-table,#olama-family-locations-app .olama-family-location-table tbody,#olama-family-locations-app .olama-family-location-table tr,#olama-family-locations-app .olama-family-location-table td{display:block;width:100%}#olama-family-locations-app .olama-family-location-table tr{padding:10px;border-bottom:1px solid #dcdcde}#olama-family-locations-app .olama-family-location-table td{border:0;padding:5px 8px}.olama-pagination{justify-content:flex-start}
 }

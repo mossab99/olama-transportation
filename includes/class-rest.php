@@ -51,6 +51,19 @@ class Olama_Transportation_REST
         register_rest_route(self::NS, '/planning/map-data', array(
             'methods' => WP_REST_Server::READABLE, 'callback' => array($this, 'planning_map_data'), 'permission_callback' => array($this, 'can_view'),
         ));
+        register_rest_route(self::NS, '/planning/area-allocations', array(
+            array('methods' => WP_REST_Server::READABLE, 'callback' => array($this, 'area_allocations'), 'permission_callback' => array($this, 'can_view')),
+            array('methods' => WP_REST_Server::CREATABLE, 'callback' => array($this, 'save_area_allocation'), 'permission_callback' => array($this, 'can_manage')),
+        ));
+        register_rest_route(self::NS, '/planning/area-allocations/preview', array(
+            'methods' => WP_REST_Server::CREATABLE, 'callback' => array($this, 'preview_area_allocation'), 'permission_callback' => array($this, 'can_manage'),
+        ));
+        register_rest_route(self::NS, '/planning/area-allocations/(?P<id>\d+)', array(
+            'methods' => WP_REST_Server::DELETABLE, 'callback' => array($this, 'delete_area_allocation'), 'permission_callback' => array($this, 'can_manage'),
+        ));
+        register_rest_route(self::NS, '/planning/areas/(?P<id>\d+)/families', array(
+            'methods' => WP_REST_Server::READABLE, 'callback' => array($this, 'area_families'), 'permission_callback' => array($this, 'can_view'),
+        ));
         register_rest_route(self::NS, '/planning/trip-slots', array(
             'methods' => WP_REST_Server::READABLE, 'callback' => array($this, 'planning_trip_slots'), 'permission_callback' => array($this, 'can_view'),
         ));
@@ -69,6 +82,22 @@ class Olama_Transportation_REST
         }
         register_rest_route(self::NS, '/imports/family-stops', array(
             'methods' => WP_REST_Server::CREATABLE, 'callback' => array($this, 'import_family_stops'), 'permission_callback' => array($this, 'can_manage'),
+        ));
+        register_rest_route(self::NS, '/family-locations/(?P<id>\d+)/area', array(
+            'methods' => WP_REST_Server::CREATABLE,
+            'callback' => array($this, 'save_family_area'),
+            'permission_callback' => array($this, 'can_manage'),
+        ));
+        register_rest_route(self::NS, '/family-locations', array(
+            'methods' => WP_REST_Server::READABLE, 'callback' => array($this, 'family_location_list'), 'permission_callback' => array($this, 'can_view'),
+        ));
+        register_rest_route(self::NS, '/family-locations/by-family/(?P<family_uid>[A-Za-z0-9:_-]+)/area', array(
+            'methods' => WP_REST_Server::CREATABLE, 'callback' => array($this, 'save_family_area_by_uid'), 'permission_callback' => array($this, 'can_manage'),
+        ));
+        register_rest_route(self::NS, '/family-locations/bulk-area', array(
+            'methods' => WP_REST_Server::CREATABLE,
+            'callback' => array($this, 'bulk_save_family_area'),
+            'permission_callback' => array($this, 'can_manage'),
         ));
         register_rest_route(self::NS, '/family-locations/(?P<family_uid>[A-Za-z0-9:_-]+)', array(
             'methods' => WP_REST_Server::EDITABLE,
@@ -116,16 +145,25 @@ class Olama_Transportation_REST
 
     public function create_entity(WP_REST_Request $request)
     {
+        if ($request['entity'] === 'allocations') {
+            return $this->respond(Olama_Transportation_Area_Trip_Assignments::save($request->get_json_params() ?: $request->get_params()));
+        }
         return $this->respond(Olama_Transportation_Repository::save_item($request['entity'], $request->get_json_params() ?: $request->get_params()));
     }
 
     public function update_entity(WP_REST_Request $request)
     {
+        if ($request['entity'] === 'allocations') {
+            return $this->respond(Olama_Transportation_Area_Trip_Assignments::save($request->get_json_params() ?: $request->get_params()));
+        }
         return $this->respond(Olama_Transportation_Repository::save_item($request['entity'], $request->get_json_params() ?: $request->get_params(), $request['id']));
     }
 
     public function delete_entity(WP_REST_Request $request)
     {
+        if ($request['entity'] === 'allocations') {
+            return $this->respond(Olama_Transportation_Area_Trip_Assignments::unassign($request['id']));
+        }
         return $this->respond(Olama_Transportation_Repository::delete_item($request['entity'], $request['id']));
     }
 
@@ -191,6 +229,70 @@ class Olama_Transportation_REST
             $request->get_param('direction') ?: 'morning',
             $request->get_params()
         ));
+    }
+
+    public function area_allocations(WP_REST_Request $request)
+    {
+        return $this->respond(Olama_Transportation_Area_Trip_Assignments::list_assignments(
+            absint($request->get_param('academic_year_id')),
+            sanitize_key($request->get_param('direction') ?: 'morning'),
+            $request->get_params()
+        ));
+    }
+
+    public function save_area_allocation(WP_REST_Request $request)
+    {
+        return $this->respond(Olama_Transportation_Area_Trip_Assignments::save($request->get_json_params() ?: $request->get_params()));
+    }
+
+    public function preview_area_allocation(WP_REST_Request $request)
+    {
+        return $this->respond(Olama_Transportation_Area_Trip_Assignments::preview($request->get_json_params() ?: $request->get_params()));
+    }
+
+    public function delete_area_allocation(WP_REST_Request $request)
+    {
+        return $this->respond(Olama_Transportation_Area_Trip_Assignments::unassign($request['id']));
+    }
+
+    public function area_families(WP_REST_Request $request)
+    {
+        return $this->respond(Olama_Transportation_Area_Trip_Assignments::area_families(
+            absint($request->get_param('academic_year_id')), sanitize_key($request->get_param('direction') ?: 'morning'),
+            $request['id'], $request->get_params()
+        ));
+    }
+
+    public function family_location_list(WP_REST_Request $request)
+    {
+        $year = absint($request->get_param('academic_year_id'));
+        if (!$year) return new WP_Error('missing_year', __('Academic year is required.', 'olama-transportation'), array('status'=>400));
+        return rest_ensure_response(Olama_Transportation_Family_Locations::admin_list($year, $request->get_params()));
+    }
+
+    public function save_family_area(WP_REST_Request $request)
+    {
+        $input = $request->get_json_params() ?: $request->get_params();
+        return $this->respond(Olama_Transportation_Family_Area_Assignments::assign($request['id'], $input['major_area_id'] ?? 0));
+    }
+
+    public function save_family_area_by_uid(WP_REST_Request $request)
+    {
+        $input = $request->get_json_params() ?: $request->get_params();
+        return $this->respond(Olama_Transportation_Family_Area_Assignments::assign_family(
+            $request['family_uid'], $input['major_area_id'] ?? 0, $input['academic_year_id'] ?? 0
+        ));
+    }
+
+    public function bulk_save_family_area(WP_REST_Request $request)
+    {
+        $input = $request->get_json_params() ?: $request->get_params();
+        if (!empty($input['family_uids'])) {
+            return $this->respond(Olama_Transportation_Family_Area_Assignments::bulk_assign_families(
+                $input['family_uids'], $input['major_area_id'] ?? 0, $input['academic_year_id'] ?? 0
+            ));
+        }
+        return $this->respond(Olama_Transportation_Family_Area_Assignments::bulk_assign($input['family_stop_ids'] ?? array(), $input['major_area_id'] ?? 0));
     }
 
     public function planning_trip_slots(WP_REST_Request $request)

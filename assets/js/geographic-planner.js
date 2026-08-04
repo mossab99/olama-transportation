@@ -1,368 +1,90 @@
 (function () {
     'use strict';
+    var root = document.getElementById('olama-area-planner');
+    if (!root || typeof L === 'undefined' || typeof olamaPlanner === 'undefined') return;
 
-    var root = document.getElementById('olama-geographic-planner');
-    if (!root || !window.L || !window.olamaPlanner) return;
+    var state = { data:null, mapData:null, markers:[], page:1, sort:'priority', order:'asc', preview:null, previewKey:'', editing:null, selectedFamilies:new Set(), familyArea:null, controller:null, sequence:0 };
+    var map = L.map('olama-planning-map').setView([31.9539,35.9106],10);
+    var markerLayer = L.layerGroup().addTo(map);
+    L.tileLayer(olamaPlanner.tileUrl,{attribution:olamaPlanner.tileAttribution,maxZoom:19}).addTo(map);
+    function el(id){ return document.getElementById(id); }
+    function t(value){ return document.createTextNode(value === null || value === undefined ? '' : String(value)); }
+    function option(select,value,label){ var node=document.createElement('option'); node.value=value; node.appendChild(t(label)); select.appendChild(node); }
+    function cell(row,value,className){ var node=row.insertCell(); if(className)node.className=className; node.appendChild(t(value === null || value === undefined || value === '' ? '—' : value)); return node; }
+    function message(error){ return error && error.message ? error.message : olamaPlanner.i18n.failed; }
+    function query(params){ var search=new URLSearchParams(); Object.keys(params).forEach(function(key){ if(params[key] !== '' && params[key] !== null && params[key] !== undefined)search.set(key,params[key]); }); return search.toString(); }
+    function request(path,options,signal){ options=options||{}; options.headers=Object.assign({'X-WP-Nonce':olamaPlanner.restNonce,'Content-Type':'application/json'},options.headers||{}); if(signal)options.signal=signal; return fetch(olamaPlanner.restUrl+path,options).then(function(response){ return response.json().catch(function(){ return {}; }).then(function(body){ if(!response.ok)throw body; return body; }); }); }
+    function context(){ return { academic_year_id:parseInt(el('planner-year').value,10),direction:el('planner-direction').value }; }
+    function filters(){ var c=context(); return Object.assign(c,{major_area_id:el('planner-area').value,bus_id:el('planner-filter-bus').value,trip_number:el('planner-filter-trip').value,assignment_status:el('planner-assignment').value,location_readiness:el('planner-readiness').value,show_all:el('planner-show-all').checked?1:0,per_page:el('planner-per-page').value,page:state.page,sort:state.sort,order:state.order}); }
+    function setStatus(text,status){ var box=el('planner-demand-status'); box.textContent=text||''; box.className='olama-planner-message'+(status?' is-'+status:''); }
+    function statusLabel(status){ var labels=olamaPlanner.i18n.statuses||{}; return labels[status]||String(status||'').replace(/_/g,' '); }
+    function colorHash(value){ var hash=0,s=String(value||'unassigned'); for(var i=0;i<s.length;i++)hash=s.charCodeAt(i)+((hash<<5)-hash); return 'hsl('+Math.abs(hash%360)+',65%,42%)'; }
+    function areaColor(area){ var configured=area&&area.color; return configured&&window.CSS&&CSS.supports('color',configured)?configured:colorHash(area&&area.id); }
+    function areaNameCell(row,area){ var c=row.insertCell(),wrap=document.createElement('span'),dot=document.createElement('span'); wrap.className='olama-area-name'; dot.className='olama-area-color-dot'; dot.style.setProperty('--area-color',areaColor(area)); dot.setAttribute('aria-hidden','true'); wrap.append(dot,t(area.name)); c.appendChild(wrap); return c; }
 
-    var state = {
-        academicYearId: Number(root.dataset.yearId || 0), direction: 'morning', filters: {}, families: [], groups: [], buses: [], areas: [],
-        selectedFamilyUids: new Set(), editingGroupId: 0, selectedBusId: 0, selectedTripNumber: 0,
-        drawnPolygon: null, unsavedChanges: false, requestInProgress: false, readOnly: false, markers: new Map(), groupLayers: [], mapDataCache: {}
-    };
-    var el = function (id) { return document.getElementById(id); };
-    var tr = function (key) { return olamaPlanner.i18n[key] || key; };
-    var map = L.map('olama-planning-map', { preferCanvas: true }).setView([31.9539, 35.9106], 11);
-    L.tileLayer(olamaPlanner.tileUrl, { attribution: olamaPlanner.tileAttribution, maxZoom: 19 }).addTo(map);
-    var familyLayer = L.layerGroup().addTo(map);
-    var overlayLayer = L.layerGroup().addTo(map);
-    var drawnLayer = L.featureGroup().addTo(map);
-    var schoolMarker = null;
-    var activePolygonDrawer = null;
-    var restoreMapDragging = false;
-
-    function api(path, options) {
-        options = options || {};
-        options.headers = options.headers || {};
-        options.headers['X-WP-Nonce'] = olamaPlanner.restNonce;
-        if (options.body) {
-            options.headers['Content-Type'] = 'application/json';
-            options.body = JSON.stringify(options.body);
-        }
-        return fetch(olamaPlanner.restUrl + path, options).then(function (response) {
-            return response.json().then(function (payload) {
-                if (!response.ok) {
-                    var error = new Error(payload.message || 'Request failed');
-                    error.payload = payload;
-                    throw error;
-                }
-                return payload;
-            });
+    function load(highlight){
+        if(state.controller)state.controller.abort(); state.controller=new AbortController(); var signal=state.controller.signal, sequence=++state.sequence, f=filters();
+        root.classList.add('is-loading');
+        Promise.all([
+            request('planning/area-allocations?'+query(f),{},signal),
+            request('planning/map-data?'+query({academic_year_id:f.academic_year_id,direction:f.direction,major_area_id:f.major_area_id,assignment_status:f.assignment_status,mode:el('planner-map-mode').value}),{},signal)
+        ]).then(function(values){ if(sequence!==state.sequence)return; state.data=values[0]; state.mapData=values[1]; render(highlight); }).catch(function(error){ if(error.name!=='AbortError')setStatus(message(error),'error'); }).finally(function(){ if(sequence===state.sequence)root.classList.remove('is-loading'); });
+    }
+    function render(highlight){ renderMetrics(); fillSelectors(); renderTable(highlight); renderMap(); renderPagination(); updateBusCapacity(); }
+    function renderMetrics(){ var m=state.data.metrics||{}, ids={registered_transportation_families:'metric-registered',valid_family_locations:'metric-valid',families_missing_coordinates:'metric-missing-coordinates',families_with_planning_areas:'metric-area-assigned',families_without_planning_areas:'metric-area-missing',direction_students:'metric-students',students_allocated:'metric-allocated',students_not_allocated:'metric-unallocated',active_buses:'metric-buses',used_bus_trip_slots:'metric-slots',capacity_problem_count:'metric-problems'}; Object.keys(ids).forEach(function(key){ el(ids[key]).textContent=m[key]||0; }); setStatus(state.data.warning||'',state.data.warning?'warning':''); }
+    function preserveOptions(select,items,placeholder){ var current=select.value; select.innerHTML=''; if(placeholder!==null)option(select,'',placeholder); items.forEach(function(item){ option(select,item.id,item.name||item.bus_number); }); select.value=current; }
+    function fillSelectors(){
+        var areas=state.data.area_options||[], buses=(state.mapData.buses||[]).filter(function(bus){return bus.assignable;});
+        preserveOptions(el('planner-area'),areas,olamaPlanner.i18n.allAreas); preserveOptions(el('allocation-area'),areas,olamaPlanner.i18n.selectArea); preserveOptions(el('area-family-move-area'),areas,olamaPlanner.i18n.selectArea);
+        preserveOptions(el('planner-filter-bus'),buses,olamaPlanner.i18n.allBuses); preserveOptions(el('allocation-bus'),buses,olamaPlanner.i18n.selectBus);
+        var filter=el('planner-filter-trip'),current=filter.value,max=0; buses.forEach(function(bus){max=Math.max(max,parseInt(bus[context().direction+'_trip_count']||0,10));}); filter.innerHTML=''; option(filter,'',olamaPlanner.i18n.allTrips); for(var i=1;i<=max;i++)option(filter,i,i); filter.value=current;
+        if(state.editing){ el('allocation-area').value=state.editing.areaId; el('allocation-bus').value=state.editing.busId; }
+    }
+    function renderTable(highlight){
+        var body=el('planner-allocations-body'); body.innerHTML=''; var areas=state.data.areas||[];
+        if(!areas.length){ var empty=body.insertRow(); var c=cell(empty,olamaPlanner.i18n.noAreas); c.colSpan=8; return; }
+        areas.forEach(function(area){ var a=area.assignment||{},row=body.insertRow(); row.dataset.areaId=area.id; if(parseInt(highlight,10)===area.id){row.className='is-highlighted'; setTimeout(function(){row.classList.remove('is-highlighted');},3000);}
+            areaNameCell(row,area); cell(row,area.family_count+' '+olamaPlanner.i18n.families+' / '+area.student_count+' '+olamaPlanner.i18n.students);
+            cell(row,a.bus_number ? a.bus_number+' / '+olamaPlanner.i18n.trip+' '+a.trip_number : null); cell(row,area.effective_capacity);
+            cell(row,area.bus_trip_used_seats===null?null:area.bus_trip_used_seats+' / '+area.bus_trip_remaining_seats); cell(row,area.utilization===null?null:area.utilization+'%');
+            var sc=cell(row,statusLabel(area.assignment_status),'olama-status-cell'); sc.dataset.status=area.assignment_status;
+            var actions=row.insertCell(), edit=document.createElement('button'), families=document.createElement('button'), show=document.createElement('button');
+            edit.type=families.type=show.type='button'; edit.className=families.className=show.className='button button-small'; edit.appendChild(t(a.id?olamaPlanner.i18n.edit:olamaPlanner.i18n.assignEdit)); families.appendChild(t(olamaPlanner.i18n.viewFamilies)); show.appendChild(t(olamaPlanner.i18n.map));
+            edit.disabled=!olamaPlanner.canManage; edit.addEventListener('click',function(){editArea(area);}); families.addEventListener('click',function(){showFamilies(area);}); show.addEventListener('click',function(){fitArea(area.id);}); actions.append(edit,families,show);
+            if(a.id&&olamaPlanner.canManage){ var remove=document.createElement('button'); remove.type='button'; remove.className='button-link-delete'; remove.appendChild(t(olamaPlanner.i18n.remove)); remove.addEventListener('click',function(){removeAssignment(area);}); actions.appendChild(remove); }
+            row.addEventListener('click',function(event){if(!event.target.closest('button,a,select,input'))fitArea(area.id);});
         });
     }
+    function renderPagination(){ var p=state.data.pagination||{},box=el('planner-pagination'); box.innerHTML=''; var summary=document.createElement('span'); summary.appendChild(t((p.total||0)+' '+olamaPlanner.i18n.areas)); box.appendChild(summary); ['previous','next'].forEach(function(kind){var b=document.createElement('button'); b.type='button'; b.className='button'; b.appendChild(t(olamaPlanner.i18n[kind])); b.disabled=kind==='previous'?p.page<=1:p.page>=p.total_pages; b.addEventListener('click',function(){state.page+=kind==='previous'?-1:1;load();}); box.appendChild(b);}); }
+    function renderAreaLegend(byArea){ var legend=el('planner-area-legend'); legend.innerHTML=''; var used={}; (state.mapData.families||[]).forEach(function(f){if(f.major_area_id)used[f.major_area_id]=true;}); Object.keys(used).map(function(id){return byArea[id];}).filter(Boolean).sort(function(a,b){return String(a.name).localeCompare(String(b.name));}).forEach(function(area){var key=document.createElement('span'),dot=document.createElement('span');key.className='olama-area-color-key';dot.className='olama-area-color-dot';dot.style.setProperty('--area-color',areaColor(area));dot.setAttribute('aria-hidden','true');key.append(dot,t(area.name));legend.appendChild(key);}); legend.hidden=!legend.children.length; }
+    function renderMap(){ markerLayer.clearLayers(); state.markers=[]; var mode=el('planner-map-mode').value,byArea={}; (state.data.area_options||[]).forEach(function(a){byArea[a.id]=a;}); (state.mapData.families||[]).forEach(function(f){ var area=byArea[f.major_area_id],fill=area?areaColor(area):'#6b7280',border='#fff',classes='olama-family-count-marker'; if(mode==='bus'&&f.bus_id)border=colorHash(f.bus_id+':'+f.trip_number); if(!f.major_area_id)classes+=' is-unassigned'; if(mode==='problems')classes+=' is-problem'; var count=Math.max(0,parseInt(f.student_count||0,10)),iconNode=document.createElement('span'); iconNode.className=classes; iconNode.style.setProperty('--area-color',fill); iconNode.style.setProperty('--marker-border-color',border); iconNode.textContent=String(count); iconNode.setAttribute('aria-label',f.family_name+': '+count+' '+olamaPlanner.i18n.students); var icon=L.divIcon({className:'olama-family-count-icon',html:iconNode.outerHTML,iconSize:[36,36],iconAnchor:[18,18],popupAnchor:[0,-18]}); var marker=L.marker([f.latitude,f.longitude],{icon:icon}); marker.bindPopup([f.family_name,'#'+f.oracle_family_id,f.student_count+' '+olamaPlanner.i18n.students,f.major_area_name||'—',f.bus_number?f.bus_number+' / '+olamaPlanner.i18n.trip+' '+f.trip_number:'—',f.direction,statusLabel(f.location_status),f.demand_mode,statusLabel(f.assignment_status)].map(function(x){return '<div>'+String(x).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];})+'</div>';}).join('')); marker.addTo(markerLayer); state.markers.push({marker:marker,areaId:f.major_area_id}); }); renderAreaLegend(byArea); if(state.mapData.school)L.marker([state.mapData.school.latitude,state.mapData.school.longitude]).addTo(markerLayer).bindPopup(olamaPlanner.i18n.school); el('olama-planning-map').classList.toggle('has-no-family-markers',!state.markers.length); if(!state.markers.length&&state.mapData.meta&&state.mapData.meta.family_count===0)setStatus(olamaPlanner.i18n.noValidLocations,'warning'); }
+    function fitArea(id){ var points=state.markers.filter(function(m){return parseInt(m.areaId||0,10)===parseInt(id,10);}).map(function(m){return m.marker.getLatLng();}); if(points.length)map.fitBounds(L.latLngBounds(points).pad(.2)); else setStatus(olamaPlanner.i18n.noCoordinates,'warning'); }
 
-    function load(force) {
-        if (state.requestInProgress) return Promise.resolve();
-        state.requestInProgress = true;
-        setDisabled(true);
-        var key = state.academicYearId + ':' + state.direction;
-        var request = !force && state.mapDataCache[key]
-            ? Promise.resolve(state.mapDataCache[key])
-            : api('planning/map-data?academic_year_id=' + state.academicYearId + '&direction=' + encodeURIComponent(state.direction));
-        return request.then(function (data) {
-            state.mapDataCache[key] = data;
-            state.families = data.families || [];
-            state.groups = data.groups || [];
-            state.buses = data.buses || [];
-            state.areas = data.areas || [];
-            populateFilters();
-            renderAll(data, force);
-            el('planner-demand-status').textContent = data.meta.warning || (data.meta.demand_mode === 'transport_enrollments' ? 'Transportation enrollment demand' : '');
-            el('planner-demand-status').className = 'olama-planner-message ' + (data.meta.warning ? 'is-warning' : 'is-ok');
-        }).catch(showError).finally(function () {
-            state.requestInProgress = false;
-            setDisabled(false);
-        });
-    }
+    function editorPayload(){ var c=context(); return {academic_year_id:c.academic_year_id,direction:el('allocation-direction').value,major_area_id:parseInt(el('allocation-area').value||0,10),bus_id:parseInt(el('allocation-bus').value||0,10),trip_number:parseInt(el('allocation-trip').value||0,10),notes:el('allocation-notes').value,current_assignment_id:state.editing?state.editing.assignmentId:0}; }
+    function payloadKey(p){ return [p.academic_year_id,p.direction,p.major_area_id,p.bus_id,p.trip_number].join('|'); }
+    function invalidatePreview(){ state.preview=null; state.previewKey=''; el('allocation-preview').innerHTML='<p>'+olamaPlanner.i18n.previewIncomplete+'</p>'; el('allocation-save').disabled=true; }
+    function updateBusCapacity(){ var id=parseInt(el('allocation-bus').value||0,10),bus=state.mapData&&(state.mapData.buses||[]).find(function(b){return b.id===id;}); el('allocation-bus-capacity').textContent=bus?olamaPlanner.i18n.effectiveCapacity+': '+bus.effective_capacity+(bus.capacity_source==='planning_override'?' ('+olamaPlanner.i18n.override+')':''):''; }
+    function rebuildTrips(selected){ var p=editorPayload(),bus=state.mapData&&(state.mapData.buses||[]).find(function(b){return b.id===p.bus_id;}),select=el('allocation-trip'); select.innerHTML=''; option(select,'',olamaPlanner.i18n.selectTrip); var count=bus?parseInt(bus[p.direction+'_trip_count']||0,10):0; for(var i=1;i<=count;i++)option(select,i,i); if(selected)select.value=selected; select.disabled=!count; if(bus&&!count)el('allocation-error').textContent=olamaPlanner.i18n.noTrips; updateBusCapacity(); invalidatePreview(); }
+    function editArea(area){ var a=area.assignment||{}; state.editing={areaId:area.id,busId:a.bus_id||0,assignmentId:a.id||0,trip:a.trip_number||0}; el('allocation-editor-title').textContent=a.id?olamaPlanner.i18n.editAssignment:olamaPlanner.i18n.newAssignment; el('allocation-area').value=area.id; el('allocation-direction').value=context().direction; el('allocation-bus').value=a.bus_id||''; el('allocation-notes').value=a.notes||''; el('allocation-cancel').hidden=false; rebuildTrips(a.trip_number); el('allocation-area').focus(); }
+    function cancelEdit(){ state.editing=null; el('allocation-editor-title').textContent=olamaPlanner.i18n.newAssignment; ['allocation-area','allocation-bus','allocation-trip'].forEach(function(id){el(id).value='';}); el('allocation-notes').value=''; el('allocation-cancel').hidden=true; el('allocation-error').textContent=''; invalidatePreview(); updateBusCapacity(); }
+    function renderPreview(result,error){ var box=el('allocation-preview'); box.innerHTML=''; var data=result||(error&&error.data)||{},status=data.capacity_status||'error'; box.className='olama-capacity-preview is-'+status; var title=document.createElement('strong'); title.appendChild(t(error?message(error):statusLabel(status))); box.appendChild(title); var rows=[['areaFamilies',data.area_family_count],['areaStudents',data.area_students],['currentTripStudents',data.current_bus_trip_students],['currentAssignmentStudents',data.current_assignment_students],['resultingSeats',data.resulting_used_seats],['capacity',data.effective_capacity],['remaining',data.remaining_seats],['utilization',data.utilization===undefined?null:data.utilization+'%'],['demandSource',data.demand_mode?statusLabel(data.demand_mode):null]]; rows.forEach(function(pair){if(pair[1]!==null&&pair[1]!==undefined){var line=document.createElement('div');line.appendChild(t(olamaPlanner.i18n[pair[0]]+': '+pair[1]));box.appendChild(line);}}); if(data.warning){var w=document.createElement('p');w.appendChild(t(data.warning));box.appendChild(w);} }
+    function preview(){ var p=editorPayload(); el('allocation-error').textContent=''; if(!p.major_area_id||!p.bus_id||!p.trip_number){invalidatePreview();el('allocation-error').textContent=olamaPlanner.i18n.completeFields;return;} var key=payloadKey(p); el('allocation-preview').textContent=olamaPlanner.i18n.previewing; request('planning/area-allocations/preview',{method:'POST',body:JSON.stringify(p)}).then(function(result){state.preview=result;state.previewKey=key;renderPreview(result);el('allocation-save').disabled=!olamaPlanner.canManage||!result.valid;}).catch(function(error){invalidatePreview();renderPreview(null,error);el('allocation-error').textContent=message(error);}); }
+    function save(){ var p=editorPayload(); if(!state.preview||state.previewKey!==payloadKey(p)){invalidatePreview();return;} p.preview_hash=state.preview.preview_hash; var area=(state.data.area_options||[]).find(function(a){return a.id===p.major_area_id;}),bus=(state.mapData.buses||[]).find(function(b){return b.id===p.bus_id;}); if(!window.confirm([olamaPlanner.i18n.confirmSave,area&&area.name,p.direction,bus&&bus.bus_number,olamaPlanner.i18n.trip+' '+p.trip_number,state.preview.area_family_count+' '+olamaPlanner.i18n.families,state.preview.area_students+' '+olamaPlanner.i18n.students].filter(Boolean).join('\n')))return; el('allocation-save').disabled=true; request('planning/area-allocations',{method:'POST',body:JSON.stringify(p)}).then(function(){setStatus(olamaPlanner.i18n.saved,'ok');var id=p.major_area_id;cancelEdit();load(id);}).catch(function(error){el('allocation-error').textContent=message(error);if(error.code==='capacity_changed'){var fresh=error.data&&error.data.capacity;state.preview=fresh||null;state.previewKey=fresh?payloadKey(p):'';renderPreview(fresh,error);preview();}else{invalidatePreview();}}); }
+    function removeAssignment(area){ var a=area.assignment||{}; if(!window.confirm([olamaPlanner.i18n.confirmRemove,area.name,context().direction,a.bus_number,olamaPlanner.i18n.trip+' '+a.trip_number,area.family_count+' '+olamaPlanner.i18n.families,area.student_count+' '+olamaPlanner.i18n.students,olamaPlanner.i18n.removeEffect].filter(Boolean).join('\n')))return; request('planning/area-allocations/'+a.id,{method:'DELETE'}).then(function(){setStatus(olamaPlanner.i18n.removed,'ok');load(area.id);}).catch(function(e){setStatus(message(e),'error');}); }
 
-    function populateFilters() {
-        fillSelect(el('planner-area'), state.areas.filter(function (a) { return a.status === 'active'; }), 'id', 'name', 'All areas');
-        fillSelect(el('group-area'), state.areas.filter(function (a) { return a.status === 'active'; }), 'id', 'name', 'No primary area');
-        fillSelect(el('planner-filter-bus'), state.buses, 'id', 'bus_number', 'All buses');
-        fillSelect(el('group-bus'), state.buses.filter(function (b) { return b.assignable; }), 'id', 'bus_number', 'Select Bus');
-        el('group-bus').value = state.selectedBusId || '';
-        updateFilterTrips();
-    }
+    function familyParams(){ var c=context(); return query({academic_year_id:c.academic_year_id,direction:c.direction,search:el('area-family-search').value,location_status:el('area-family-location').value,allocation_status:el('area-family-allocation').value}); }
+    function showFamilies(area){ state.familyArea=area; state.selectedFamilies.clear(); el('area-family-title').textContent=area.name+' — '+olamaPlanner.i18n.families; el('area-family-detail').hidden=false; el('area-family-move-area').value=area.id; loadFamilies(); }
+    function loadFamilies(){ if(!state.familyArea)return; var list=el('area-family-list'); list.textContent=olamaPlanner.i18n.loading; request('planning/areas/'+state.familyArea.id+'/families?'+familyParams()).then(function(data){list.innerHTML=''; if(!data.items.length){list.appendChild(t(olamaPlanner.i18n.noFamilies));return;} data.items.forEach(function(f){var row=document.createElement('div');row.className='olama-family-detail-row';var check=document.createElement('input');check.type='checkbox';check.checked=state.selectedFamilies.has(f.family_uid);check.disabled=!olamaPlanner.canManage;check.addEventListener('change',function(){if(check.checked)state.selectedFamilies.add(f.family_uid);else state.selectedFamilies.delete(f.family_uid);});var label=document.createElement('span');label.appendChild(t(f.family_name+' #'+f.oracle_family_id+' — '+f.student_count+' '+olamaPlanner.i18n.students+' — '+(f.major_area_name||'—')+' — '+statusLabel(f.location_status)+' — '+(f.bus_number?f.bus_number+' / '+olamaPlanner.i18n.trip+' '+f.trip_number:statusLabel(f.assignment_status))+' — '+(f.area_assignment_source||'—')));row.append(check,label);if(f.latitude!==null&&f.longitude!==null){var mapButton=document.createElement('button');mapButton.type='button';mapButton.className='button button-small';mapButton.appendChild(t(olamaPlanner.i18n.map));mapButton.addEventListener('click',function(){map.setView([f.latitude,f.longitude],16);});row.appendChild(mapButton);}list.appendChild(row);});}).catch(function(e){list.textContent=message(e);}); }
+    function bulkMove(){ var ids=Array.from(state.selectedFamilies),area=parseInt(el('area-family-move-area').value||0,10); if(!ids.length||!area){setStatus(olamaPlanner.i18n.selectFamilies,'warning');return;} request('family-locations/bulk-area',{method:'POST',body:JSON.stringify({family_uids:ids,major_area_id:area,academic_year_id:context().academic_year_id})}).then(function(){setStatus(olamaPlanner.i18n.familyMoved,'ok');state.selectedFamilies.clear();load();if(state.familyArea)loadFamilies();}).catch(function(e){setStatus(message(e),'error');}); }
 
-    function fillSelect(select, rows, valueKey, textKey, first) {
-        var current = select.value;
-        select.replaceChildren(new Option(first, ''));
-        rows.forEach(function (row) {
-            var label = row[textKey] + (row.core_capacity_missing ? ' — local capacity override' : '');
-            select.appendChild(new Option(label, row[valueKey]));
-        });
-        if ([].some.call(select.options, function (o) { return o.value === current; })) select.value = current;
-    }
-
-    function renderAll(data, fit) {
-        renderMarkers();
-        renderGroupOverlays();
-        renderGroupsTable();
-        updateMetrics(data.meta);
-        updatePanel();
-        if (fit) fitMap(data.school);
-        if (!schoolMarker) {
-            schoolMarker = L.marker([data.school.latitude, data.school.longitude], { title: 'School', zIndexOffset: 1000 }).addTo(map).bindPopup('School');
-        } else schoolMarker.setLatLng([data.school.latitude, data.school.longitude]);
-    }
-
-    function visibleFamilies() {
-        var query = (el('planner-search').value || '').trim().toLowerCase();
-        var area = Number(el('planner-area').value || 0);
-        var assignment = el('planner-assignment').value;
-        var location = el('planner-location-status').value;
-        var bus = Number(el('planner-filter-bus').value || 0);
-        var trip = Number(el('planner-filter-trip').value || 0);
-        return state.families.filter(function (family) {
-            if (area && Number(family.major_area_id) !== area) return false;
-            if (assignment === 'assigned' && !family.assignment) return false;
-            if (assignment === 'unassigned' && family.assignment) return false;
-            if (location !== 'all' && family.location_status !== location) return false;
-            if (bus && (!family.assignment || Number(family.assignment.bus_id) !== bus)) return false;
-            if (trip && (!family.assignment || Number(family.assignment.trip_number) !== trip)) return false;
-            return !query || (family.family_name + ' ' + family.oracle_family_id).toLowerCase().indexOf(query) !== -1;
-        });
-    }
-
-    function renderMarkers() {
-        var visible = new Set(visibleFamilies().map(function (f) { return f.family_uid; }));
-        state.families.forEach(function (family) {
-            var marker = state.markers.get(family.family_uid);
-            if (!marker) {
-                marker = L.marker([family.latitude, family.longitude], { icon: markerIcon(family) });
-                marker.on('click', function () { markerClicked(family, marker); });
-                state.markers.set(family.family_uid, marker);
-            }
-            marker.setIcon(markerIcon(family));
-            if (visible.has(family.family_uid)) {
-                if (!familyLayer.hasLayer(marker)) marker.addTo(familyLayer);
-            } else if (familyLayer.hasLayer(marker)) familyLayer.removeLayer(marker);
-        });
-    }
-
-    function markerIcon(family) {
-        var selected = state.selectedFamilyUids.has(family.family_uid);
-        var assigned = family.assignment;
-        var color = assigned ? assigned.color : '#6b7280';
-        var classes = 'olama-family-marker' + (selected ? ' is-selected' : '') + (family.location_status === 'needs_review' ? ' needs-review' : '');
-        return L.divIcon({ className: '', html: '<span class="' + classes + '" style="--marker-color:' + safeColor(color) + '"><b>' + Number(family.student_count) + '</b><i aria-hidden="true">' + (family.location_status === 'needs_review' ? '!' : '') + '</i></span>', iconSize: [34, 34], iconAnchor: [17, 17] });
-    }
-
-    function markerClicked(family, marker) {
-        if (activePolygonDrawer && activePolygonDrawer.enabled()) return;
-        if (isSelectable(family)) toggleFamily(family.family_uid);
-        marker.bindPopup(buildPopup(family), { maxWidth: 290 }).openPopup();
-    }
-
-    function buildPopup(family) {
-        var box = document.createElement('div');
-        var title = document.createElement('strong'); title.textContent = family.family_name; box.appendChild(title);
-        [
-            'Family: ' + family.oracle_family_id,
-            'Area: ' + (family.region_name || '—'),
-            'Students: ' + family.student_count,
-            'Location: ' + family.location_status,
-            family.assignment ? 'Group: ' + family.assignment.group_name : 'Group: Unassigned',
-            family.assignment ? 'Bus / trip: ' + (family.assignment.bus_number || family.assignment.bus_id) + ' / ' + family.assignment.trip_number : ''
-        ].filter(Boolean).forEach(function (text) { var p = document.createElement('div'); p.textContent = text; box.appendChild(p); });
-        var action = document.createElement('button'); action.type = 'button'; action.className = 'button button-small';
-        action.textContent = state.selectedFamilyUids.has(family.family_uid) ? 'Remove from Current Group' : 'Add to Current Group';
-        action.disabled = !isSelectable(family);
-        action.addEventListener('click', function () { toggleFamily(family.family_uid); marker.closePopup(); });
-        box.appendChild(action);
-        var maps = document.createElement('a'); maps.className = 'button button-small'; maps.target = '_blank'; maps.rel = 'noopener';
-        maps.href = 'https://www.google.com/maps?q=' + encodeURIComponent(family.latitude + ',' + family.longitude); maps.textContent = 'Google Maps'; box.appendChild(maps);
-        return box;
-    }
-
-    function isSelectable(family) {
-        return !!state.editingGroupId || state.unsavedChanges
-            ? (!family.assignment || Number(family.assignment.group_id) === Number(state.editingGroupId)) && Number(family.student_count) > 0
-            : false;
-    }
-
-    function toggleFamily(uid) {
-        var family = state.families.find(function (f) { return f.family_uid === uid; });
-        if (!family || !isSelectable(family)) return;
-        if (state.selectedFamilyUids.has(uid)) state.selectedFamilyUids.delete(uid); else state.selectedFamilyUids.add(uid);
-        state.unsavedChanges = true;
-        renderMarkers(); updatePanel();
-    }
-
-    function updatePanel() {
-        var selected = state.families.filter(function (f) { return state.selectedFamilyUids.has(f.family_uid); });
-        var students = selected.reduce(function (sum, f) { return sum + Number(f.student_count); }, 0);
-        var bus = state.buses.find(function (b) { return Number(b.id) === Number(el('group-bus').value); });
-        var capacity = bus ? Number(bus.effective_capacity) : 0;
-        var remaining = capacity - students;
-        var usage = capacity ? students / capacity * 100 : 0;
-        el('metric-selected').textContent = selected.length;
-        el('group-family-count').textContent = selected.length;
-        el('group-student-count').textContent = students;
-        el('group-capacity').textContent = capacity;
-        el('group-remaining').textContent = remaining;
-        el('group-usage').textContent = usage.toFixed(1) + '%';
-        var status = el('group-capacity-status');
-        status.className = 'olama-capacity-status ' + (students > capacity ? 'is-exceeded' : usage > 85 ? 'is-near' : 'is-normal');
-        status.textContent = students > capacity ? tr('capacityExceeded') + ' ' + (students - capacity) : usage > 85 ? tr('nearCapacity') : tr('withinCapacity');
-        var areas = Array.from(new Set(selected.map(function (f) { return f.region_name || 'Unclassified'; })));
-        el('group-included-areas').textContent = 'Included areas: ' + (areas.join(', ') || '—') + (areas.length > 1 ? ' — multiple areas' : '');
-        var list = el('group-family-list'); list.replaceChildren();
-        selected.forEach(function (family) {
-            var li = document.createElement('li'); li.append(document.createTextNode(family.family_name + ' (' + family.student_count + ') '));
-            var remove = document.createElement('button'); remove.type = 'button'; remove.textContent = '×'; remove.setAttribute('aria-label', 'Remove');
-            remove.addEventListener('click', function () { toggleFamily(family.family_uid); }); li.appendChild(remove); list.appendChild(li);
-        });
-        var valid = !state.readOnly && selected.length > 0 && el('group-name').value.trim() && bus && bus.assignable && el('group-trip').value && students <= capacity && !state.requestInProgress;
-        el('group-save').disabled = !valid || !olamaPlanner.canManage;
-    }
-
-    function startNew() {
-        if (!discardOkay()) return;
-        clearEditor();
-        state.unsavedChanges = true;
-        el('group-panel-title').textContent = 'New Geographic Group';
-        updatePanel();
-    }
-
-    function clearEditor() {
-        stopAreaDrawing();
-        state.selectedFamilyUids.clear(); state.editingGroupId = 0; state.selectedBusId = 0; state.selectedTripNumber = 0; state.unsavedChanges = false; state.readOnly = false; state.drawnPolygon = null;
-        drawnLayer.clearLayers(); el('group-name').value = ''; el('group-area').value = ''; el('group-bus').value = ''; el('group-trip').replaceChildren(new Option('Select Trip', '')); el('group-color').value = '#2563eb'; el('group-notes').value = ''; el('group-error').textContent = '';
-        ['group-name','group-area','group-bus','group-trip','group-color','group-notes','planner-draw'].forEach(function (id) { el(id).disabled = false; });
-        renderMarkers(); updatePanel();
-    }
-
-    function editGroup(id, readonly) {
-        if (!discardOkay()) return;
-        api('planning/groups/' + id).then(function (group) {
-            clearEditor(); state.editingGroupId = group.id; state.selectedBusId = group.bus_id; state.selectedTripNumber = group.trip_number; state.readOnly = readonly;
-            group.families.forEach(function (f) { state.selectedFamilyUids.add(f.family_uid); });
-            el('group-name').value = group.group_name; el('group-area').value = group.major_area_id || ''; el('group-bus').value = group.bus_id; el('group-color').value = safeColor(group.color); el('group-notes').value = group.notes || '';
-            el('group-panel-title').textContent = (readonly ? 'View: ' : 'Edit: ') + group.group_name;
-            if (group.polygon_geojson) { state.drawnPolygon = group.polygon_geojson; L.geoJSON(group.polygon_geojson, { style: { color: group.color } }).eachLayer(function (layer) { drawnLayer.addLayer(layer); }); }
-            ['group-name','group-area','group-bus','group-trip','group-color','group-notes','planner-draw'].forEach(function (id) { el(id).disabled = readonly; });
-            loadTrips(group.trip_number).then(function () { state.unsavedChanges = !readonly; updatePanel(); renderMarkers(); });
-        }).catch(showError);
-    }
-
-    function loadTrips(selected) {
-        var busId = Number(el('group-bus').value || 0);
-        state.selectedBusId = busId;
-        var select = el('group-trip'); select.replaceChildren(new Option('Select Trip', ''));
-        if (!busId) { updatePanel(); return Promise.resolve(); }
-        return api('planning/trip-slots?academic_year_id=' + state.academicYearId + '&direction=' + state.direction + '&bus_id=' + busId).then(function (rows) {
-            (rows[0] ? rows[0].slots : []).forEach(function (slot) {
-                var own = slot.group && Number(slot.group.id) === Number(state.editingGroupId);
-                var option = new Option((state.direction === 'morning' ? 'Morning' : 'Afternoon') + ' Trip ' + slot.trip_number + ' — ' + (slot.status === 'available' || own ? tr('available') : tr(slot.status)) + (slot.group && !own ? ': ' + slot.group.group_name : ''), slot.trip_number);
-                option.disabled = slot.status !== 'available' && !own; select.appendChild(option);
-            });
-            select.value = selected || ''; state.selectedTripNumber = Number(select.value || 0); updatePanel();
-        }).catch(showError);
-    }
-
-    function saveGroup() {
-        if (state.requestInProgress || el('group-save').disabled) return;
-        state.requestInProgress = true; setDisabled(true);
-        var payload = {
-            academic_year_id: state.academicYearId, direction: state.direction, trip_number: Number(el('group-trip').value),
-            group_name: el('group-name').value.trim(), bus_id: Number(el('group-bus').value), major_area_id: Number(el('group-area').value || 0),
-            color: el('group-color').value, notes: el('group-notes').value, polygon_geojson: state.drawnPolygon,
-            family_uids: Array.from(state.selectedFamilyUids)
-        };
-        var path = 'planning/groups' + (state.editingGroupId ? '/' + state.editingGroupId : '');
-        api(path, { method: state.editingGroupId ? 'PUT' : 'POST', body: payload }).then(function () {
-            state.unsavedChanges = false; clearEditor(); state.mapDataCache = {}; return load(true);
-        }).then(function () { el('group-error').textContent = tr('saved'); }).catch(showError).finally(function () { state.requestInProgress = false; setDisabled(false); updatePanel(); });
-    }
-
-    function lifecycle(id, action) {
-        if (action === 'archive' && !window.confirm(tr('confirmArchive'))) return;
-        api('planning/groups/' + id + '/' + action, { method: 'POST' }).then(function () { state.mapDataCache = {}; return load(true); }).catch(showError);
-    }
-
-    function renderGroupsTable() {
-        var body = el('planner-groups-body'); body.replaceChildren();
-        if (!state.groups.length) { var empty = document.createElement('tr'); var cell = document.createElement('td'); cell.colSpan = 12; cell.textContent = tr('noGroups'); empty.appendChild(cell); body.appendChild(empty); return; }
-        state.groups.forEach(function (group) {
-            var row = document.createElement('tr');
-            [group.group_name, group.major_area_name || '—', group.direction, group.bus_number || group.bus_id, group.trip_number, group.family_count, group.student_count, group.capacity_snapshot, group.remaining_seats, group.status, group.updated_at].forEach(function (value) { var td = document.createElement('td'); td.textContent = value; row.appendChild(td); });
-            var actions = document.createElement('td');
-            addAction(actions, tr('view'), function () { editGroup(group.id, true); });
-            if (group.status === 'draft' && olamaPlanner.canManage) addAction(actions, tr('edit'), function () { editGroup(group.id, false); });
-            if (group.status === 'draft' && olamaPlanner.canApprove) addAction(actions, tr('approve'), function () { lifecycle(group.id, 'approve'); });
-            if (group.status === 'approved' && olamaPlanner.canApprove) addAction(actions, tr('revert'), function () { lifecycle(group.id, 'revert'); });
-            if (olamaPlanner.canApprove) addAction(actions, tr('archive'), function () { lifecycle(group.id, 'archive'); });
-            row.appendChild(actions); body.appendChild(row);
-        });
-    }
-
-    function addAction(parent, text, callback) { var button = document.createElement('button'); button.type = 'button'; button.className = 'button button-small'; button.textContent = text; button.addEventListener('click', callback); parent.appendChild(button); }
-
-    function renderGroupOverlays() {
-        overlayLayer.clearLayers();
-        state.groups.forEach(function (group) {
-            if (!group.polygon_geojson) return;
-            L.geoJSON(group.polygon_geojson, { style: { color: safeColor(group.color), weight: 2, fillOpacity: .08 } }).bindTooltip(group.group_name).addTo(overlayLayer);
-        });
-    }
-
-    function updateMetrics(meta) { el('metric-valid').textContent = meta.family_count; el('metric-assigned').textContent = meta.assigned_count; el('metric-unassigned').textContent = meta.unassigned_count; el('metric-invalid').textContent = meta.invalid_location_count; }
-    function fitMap(school) { var points = visibleFamilies().map(function (f) { return [f.latitude, f.longitude]; }); points.push([school.latitude, school.longitude]); if (points.length > 1) map.fitBounds(points, { padding: [25, 25], maxZoom: 15 }); else map.setView(points[0], 12); }
-    function updateFilterTrips() { var bus = state.buses.find(function (b) { return Number(b.id) === Number(el('planner-filter-bus').value); }); var select = el('planner-filter-trip'); select.replaceChildren(new Option('All trips', '')); if (!bus) return; var count = state.direction === 'morning' ? bus.morning_trip_count : bus.afternoon_trip_count; for (var i = 1; i <= count; i++) select.appendChild(new Option('Trip ' + i, i)); }
-    function pointInPolygon(point, ring) { var x = point[1], y = point[0], inside = false; for (var i = 0, j = ring.length - 1; i < ring.length; j = i++) { var xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1]; var intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / ((yj - yi) || Number.EPSILON) + xi); if (intersect) inside = !inside; } return inside; }
-    function safeColor(color) { return /^#[0-9a-f]{6}$/i.test(color || '') ? color : '#2563eb'; }
-    function setDisabled(disabled) { root.classList.toggle('is-loading', disabled); }
-    function showError(error) { el('group-error').textContent = error.message || String(error); el('group-error').className = 'olama-planner-message is-error'; }
-    function discardOkay() { return !state.unsavedChanges || window.confirm(tr('discard')); }
-
-    function startAreaDrawing() {
-        if (activePolygonDrawer && activePolygonDrawer.enabled()) {
-            activePolygonDrawer.disable();
-            return;
-        }
-        if (!state.unsavedChanges && !state.editingGroupId) startNew();
-
-        // A small pointer movement on the first click makes Leaflet treat it as
-        // a pan. Area selection must own the pointer until drawing is finished.
-        restoreMapDragging = map.dragging.enabled();
-        if (restoreMapDragging) map.dragging.disable();
-        map.getContainer().classList.add('is-area-drawing');
-        el('planner-draw').classList.add('button-primary');
-        el('planner-draw').setAttribute('aria-pressed', 'true');
-
-        activePolygonDrawer = new L.Draw.Polygon(map, {
-            allowIntersection: false,
-            showArea: true,
-            shapeOptions: { color: el('group-color').value }
-        });
-        activePolygonDrawer.enable();
-    }
-
-    function stopAreaDrawing() {
-        if (activePolygonDrawer && activePolygonDrawer.enabled()) {
-            activePolygonDrawer.disable();
-            return; // draw:drawstop performs the shared cleanup synchronously.
-        }
-        activePolygonDrawer = null;
-        map.getContainer().classList.remove('is-area-drawing');
-        el('planner-draw').classList.remove('button-primary');
-        el('planner-draw').setAttribute('aria-pressed', 'false');
-        if (restoreMapDragging && !map.dragging.enabled()) map.dragging.enable();
-        restoreMapDragging = false;
-    }
-
-    el('planner-new-group').addEventListener('click', startNew);
-    el('group-cancel').addEventListener('click', function () { if (discardOkay()) clearEditor(); });
-    el('group-save').addEventListener('click', saveGroup);
-    el('group-bus').addEventListener('change', function () { state.unsavedChanges = true; loadTrips(0); });
-    ['group-name','group-area','group-trip','group-color','group-notes'].forEach(function (id) { el(id).addEventListener('input', function () { state.unsavedChanges = true; updatePanel(); }); });
-    ['planner-area','planner-assignment','planner-location-status','planner-filter-trip'].forEach(function (id) { el(id).addEventListener('change', function () { renderMarkers(); }); });
-    el('planner-filter-bus').addEventListener('change', function () { updateFilterTrips(); renderMarkers(); });
-    el('planner-search').addEventListener('input', function () { renderMarkers(); });
-    el('planner-reset').addEventListener('click', function () { ['planner-area','planner-filter-bus','planner-filter-trip'].forEach(function (id) { el(id).value = ''; }); el('planner-assignment').value = 'all'; el('planner-location-status').value = 'all'; el('planner-search').value = ''; updateFilterTrips(); renderMarkers(); });
-    el('planner-year').addEventListener('change', function () { if (!discardOkay()) { this.value = state.academicYearId; return; } state.academicYearId = Number(this.value); clearEditor(); load(false); });
-    el('planner-direction').addEventListener('change', function () { if (!discardOkay()) { this.value = state.direction; return; } state.direction = this.value; clearEditor(); load(false); });
-    el('planner-refresh-map').addEventListener('click', function () { state.mapDataCache = {}; load(true); });
-    el('planner-refresh-areas').addEventListener('click', function () { api('core/refresh-areas', { method: 'POST' }).then(function () { state.mapDataCache = {}; return load(true); }).catch(showError); });
-    el('planner-draw').setAttribute('aria-pressed', 'false');
-    el('planner-draw').addEventListener('click', startAreaDrawing);
-    map.on(L.Draw.Event.DRAWSTOP, stopAreaDrawing);
-    map.on(L.Draw.Event.CREATED, function (event) {
-        drawnLayer.clearLayers(); drawnLayer.addLayer(event.layer); state.drawnPolygon = event.layer.toGeoJSON().geometry; state.unsavedChanges = true;
-        var ring = state.drawnPolygon.coordinates[0];
-        visibleFamilies().forEach(function (family) { if (isSelectable(family) && pointInPolygon([family.latitude, family.longitude], ring)) state.selectedFamilyUids.add(family.family_uid); });
-        renderMarkers(); updatePanel();
-    });
-    window.addEventListener('beforeunload', function (event) { if (state.unsavedChanges) { event.preventDefault(); event.returnValue = ''; } });
-    load(true);
+    ['planner-year','planner-direction'].forEach(function(id){el(id).addEventListener('change',function(){state.page=1;el('allocation-direction').value=context().direction;cancelEdit();load();});});
+    ['planner-area','planner-filter-bus','planner-filter-trip','planner-assignment','planner-readiness','planner-per-page'].forEach(function(id){el(id).addEventListener('change',function(){state.page=1;load();});});
+    el('planner-show-all').addEventListener('change',function(){state.page=1;load();}); el('planner-map-mode').addEventListener('change',function(){load();});
+    el('planner-reset').addEventListener('click',function(){['planner-area','planner-filter-bus','planner-filter-trip'].forEach(function(id){el(id).value='';});el('planner-assignment').value='all';el('planner-readiness').value='all';el('planner-show-all').checked=false;state.page=1;state.sort='priority';load();});
+    document.querySelectorAll('.olama-sort-link').forEach(function(button){button.addEventListener('click',function(){var sort=button.dataset.sort;state.order=state.sort===sort&&state.order==='asc'?'desc':'asc';state.sort=sort;load();});});
+    el('planner-refresh-map').addEventListener('click',function(){load();}); el('planner-refresh-areas').addEventListener('click',function(){request('core/refresh-areas',{method:'POST',body:'{}'}).then(function(){load();}).catch(function(e){setStatus(message(e),'error');});});
+    ['allocation-area','allocation-trip'].forEach(function(id){el(id).addEventListener('change',invalidatePreview);}); el('allocation-bus').addEventListener('change',function(){rebuildTrips();}); el('allocation-direction').addEventListener('change',function(){rebuildTrips();}); el('allocation-preview-button').addEventListener('click',preview); el('allocation-save').addEventListener('click',save); el('allocation-cancel').addEventListener('click',cancelEdit);
+    el('area-family-close').addEventListener('click',function(){el('area-family-detail').hidden=true;state.familyArea=null;}); ['area-family-location','area-family-allocation'].forEach(function(id){el(id).addEventListener('change',loadFamilies);}); var familyTimer; el('area-family-search').addEventListener('input',function(){clearTimeout(familyTimer);familyTimer=setTimeout(loadFamilies,250);}); el('area-family-bulk-move').addEventListener('click',bulkMove);
+    if(!olamaPlanner.canManage){['allocation-area','allocation-direction','allocation-bus','allocation-trip','allocation-notes','allocation-preview-button','area-family-move-area','area-family-bulk-move','planner-refresh-areas'].forEach(function(id){if(el(id))el(id).disabled=true;});}
+    invalidatePreview(); load();
 }());

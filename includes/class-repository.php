@@ -20,7 +20,7 @@ class Olama_Transportation_Repository
         'family-stops' => array(
             'table' => 'family_stops',
             'fields' => array('family_uid', 'oracle_family_id', 'latitude', 'longitude', 'maps_url', 'address_text', 'area_text', 'major_area_id', 'approved_stop_id', 'source', 'verification_status', 'notes'),
-            'required' => array('oracle_family_id', 'latitude', 'longitude'),
+            'required' => array('oracle_family_id'),
         ),
         'area-mappings' => array(
             'table' => 'area_mappings',
@@ -34,7 +34,7 @@ class Olama_Transportation_Repository
         ),
         'allocations' => array(
             'table' => 'area_bus_assignments',
-            'fields' => array('academic_year_id', 'direction', 'major_area_id', 'bus_id', 'is_locked', 'status'),
+            'fields' => array('academic_year_id', 'direction', 'major_area_id', 'bus_id', 'trip_number', 'notes', 'is_locked', 'status'),
             'required' => array('academic_year_id', 'direction', 'major_area_id', 'bus_id'),
         ),
         'devices' => array(
@@ -170,7 +170,7 @@ class Olama_Transportation_Repository
     private static function sanitize($entity, $data, $fields)
     {
         $clean = array();
-        $integer_fields = array('major_area_id', 'approved_stop_id', 'arrival_radius_m', 'service_duration_seconds', 'academic_year_id', 'morning_enabled', 'afternoon_enabled', 'pickup_family_stop_id', 'dropoff_family_stop_id', 'bus_id', 'is_locked');
+        $integer_fields = array('major_area_id', 'approved_stop_id', 'arrival_radius_m', 'service_duration_seconds', 'academic_year_id', 'morning_enabled', 'afternoon_enabled', 'pickup_family_stop_id', 'dropoff_family_stop_id', 'bus_id', 'trip_number', 'is_locked');
         $decimal_fields = array('latitude', 'longitude');
         $textarea_fields = array('notes', 'access_notes', 'boundary_geojson', 'address_text');
         foreach ($fields as $field) {

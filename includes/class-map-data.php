@@ -8,72 +8,28 @@ class Olama_Transportation_Map_Data
 {
     public static function get($academic_year_id, $direction, $filters = array())
     {
-        global $wpdb;
-
-        $academic_year_id = absint($academic_year_id);
-        $direction = sanitize_key($direction);
-        if (!$academic_year_id || !in_array($direction, array('morning', 'afternoon'), true)) {
-            return new WP_Error('invalid_map_request', __('A valid academic year and direction are required.', 'olama-transportation'), array('status' => 400));
+        $resolved = Olama_Transportation_Effective_Assignments::resolve($academic_year_id, $direction);
+        if (is_wp_error($resolved)) {
+            return $resolved;
         }
-        $study_year = Olama_Transportation_Bus::study_year($academic_year_id);
-        if ($study_year === '') {
-            return new WP_Error('invalid_academic_year', __('Academic year was not found.', 'olama-transportation'), array('status' => 400));
-        }
-
-        $enrollments = Olama_Transportation_DB::table('enrollments');
-        $enrollment_count = (int) $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM {$enrollments} WHERE academic_year_id = %d AND status = 'active'",
-            $academic_year_id
-        ));
-        $mode = $enrollment_count > 0 ? 'transport_enrollments' : 'academic_registration_fallback';
-        $demand = self::demand_rows($academic_year_id, $study_year, $direction, $mode);
-        $families_by_uid = array();
-        foreach ($demand as $row) {
-            $families_by_uid[$row['family_uid']] = $row;
-        }
-
-        $assignments = self::active_assignments($academic_year_id, $direction);
         $valid = array();
         $invalid_count = 0;
-        foreach ($families_by_uid as $uid => $row) {
-            $student_count = (int) $row['student_count'];
-            if ($student_count < 1) {
-                continue;
-            }
-            $lat = isset($row['latitude']) ? (float) $row['latitude'] : 0;
-            $lng = isset($row['longitude']) ? (float) $row['longitude'] : 0;
-            $status = sanitize_key((string) ($row['verification_status'] ?? ''));
-            if (!$row['family_stop_id'] || !in_array($status, array('needs_review', 'approved'), true)
-                || !Olama_Transportation_Family_Locations::within_service_bounds($lat, $lng)) {
+        foreach ($resolved['families'] as $family) {
+            if ($family['latitude'] === null || $family['longitude'] === null) {
                 $invalid_count++;
                 continue;
             }
-            $assignment = $assignments[$uid] ?? null;
-            $item = array(
-                'family_uid' => $uid,
-                'oracle_family_id' => (string) $row['oracle_family_id'],
-                'family_name' => (string) $row['family_name'],
-                'oracle_region_id' => (string) ($row['trans_region_id'] ?? ''),
-                'oracle_region_name' => (string) ($row['trans_region_name'] ?? ''),
-                'region_name' => (string) ($row['trans_region_name'] ?? ''),
-                'major_area_id' => $row['major_area_id'] ? (int) $row['major_area_id'] : null,
-                'latitude' => $lat,
-                'longitude' => $lng,
-                'morning_student_count' => $direction === 'morning' ? $student_count : (int) ($row['morning_student_count'] ?? $student_count),
-                'afternoon_student_count' => $direction === 'afternoon' ? $student_count : (int) ($row['afternoon_student_count'] ?? $student_count),
-                'student_count' => $student_count,
-                'location_status' => $status,
-                'assignment' => $assignment,
-            );
-            if (!self::matches_filters($item, $filters)) {
-                continue;
+            $family['region_name'] = $family['oracle_region_name'];
+            $family['assignment'] = $family['bus_id'] ? array(
+                'bus_id' => $family['bus_id'], 'bus_number' => $family['bus_number'], 'trip_number' => $family['trip_number'],
+                'status' => $family['assignment_status'],
+            ) : null;
+            $mode = sanitize_key($filters['mode'] ?? 'all');
+            if ($mode === 'unassigned' && !in_array($family['assignment_status'], array('missing_area', 'area_not_allocated'), true)) continue;
+            if ($mode === 'problems' && $family['assignment_status'] !== 'capacity_problem') continue;
+            if (self::matches_filters($family, $filters)) {
+                $valid[] = $family;
             }
-            $valid[] = $item;
-        }
-
-        $assigned = 0;
-        foreach ($valid as $family) {
-            $assigned += $family['assignment'] ? 1 : 0;
         }
         $settings = get_option('olama_transportation_settings', array());
         $school = $settings['school_location'] ?? array('latitude' => 31.9539, 'longitude' => 35.9106);
@@ -81,18 +37,16 @@ class Olama_Transportation_Map_Data
         return array(
             'school' => array('latitude' => (float) $school['latitude'], 'longitude' => (float) $school['longitude']),
             'families' => $valid,
-            'groups' => Olama_Transportation_Geographic_Planning::list_groups(array('academic_year_id' => $academic_year_id, 'direction' => $direction, 'include_archived' => false)),
+            'groups' => array(),
             'areas' => self::areas(),
             'buses' => self::buses(),
             'meta' => array(
                 'family_count' => count($valid),
-                'assigned_count' => $assigned,
-                'unassigned_count' => count($valid) - $assigned,
+                'assigned_count' => count(array_filter($valid, function ($family) { return !empty($family['assignment']); })),
+                'unassigned_count' => count(array_filter($valid, function ($family) { return empty($family['assignment']); })),
                 'invalid_location_count' => $invalid_count,
-                'demand_mode' => $mode,
-                'warning' => $mode === 'academic_registration_fallback'
-                    ? __('Transportation enrollment data is unavailable. Student counts are currently based on academic registration.', 'olama-transportation')
-                    : '',
+                'demand_mode' => $resolved['demand_mode'],
+                'warning' => $resolved['warning'],
             ),
         );
     }
@@ -110,12 +64,12 @@ class Olama_Transportation_Map_Data
                 "SELECT f.family_uid, f.oracle_family_id,
                         COALESCE(NULLIF(f.sponsor_full_name,''), NULLIF(f.father_name,''), f.oracle_family_id) family_name,
                         f.trans_region_id, f.trans_region_name, fs.id family_stop_id, fs.latitude, fs.longitude,
-                        fs.major_area_id, fs.verification_status, COUNT(DISTINCT e.student_uid) student_count
+                        fs.major_area_id, fs.verification_status, fs.area_assignment_source, COUNT(DISTINCT e.student_uid) student_count
                  FROM {$enrollments} e INNER JOIN {$families} f ON f.family_uid=e.family_uid OR (e.family_uid IS NULL AND f.oracle_family_id=e.oracle_family_id)
                  LEFT JOIN {$stops} fs ON fs.family_uid=f.family_uid OR (fs.family_uid IS NULL AND fs.oracle_family_id=f.oracle_family_id)
                  WHERE e.academic_year_id=%d AND e.status='active' AND e.{$column}=1
                  GROUP BY f.family_uid, f.oracle_family_id, f.sponsor_full_name, f.father_name, f.trans_region_id,
-                          f.trans_region_name, fs.id, fs.latitude, fs.longitude, fs.major_area_id, fs.verification_status",
+                          f.trans_region_name, fs.id, fs.latitude, fs.longitude, fs.major_area_id, fs.verification_status, fs.area_assignment_source",
                 $academic_year_id
             ), ARRAY_A);
         }
@@ -124,38 +78,15 @@ class Olama_Transportation_Map_Data
             "SELECT f.family_uid, f.oracle_family_id,
                     COALESCE(NULLIF(f.sponsor_full_name,''), NULLIF(f.father_name,''), f.oracle_family_id) family_name,
                     f.trans_region_id, f.trans_region_name, fs.id family_stop_id, fs.latitude, fs.longitude,
-                    fs.major_area_id, fs.verification_status, COUNT(DISTINCT sy.student_uid) student_count
+                    fs.major_area_id, fs.verification_status, fs.area_assignment_source, COUNT(DISTINCT sy.student_uid) student_count
              FROM {$years} sy INNER JOIN {$families} f ON f.family_uid=sy.family_uid
              LEFT JOIN {$stops} fs ON fs.family_uid=f.family_uid OR (fs.family_uid IS NULL AND fs.oracle_family_id=f.oracle_family_id)
              WHERE sy.study_year IN (%s,%s)
              GROUP BY f.family_uid, f.oracle_family_id, f.sponsor_full_name, f.father_name, f.trans_region_id,
-                      f.trans_region_name, fs.id, fs.latitude, fs.longitude, fs.major_area_id, fs.verification_status",
+                      f.trans_region_name, fs.id, fs.latitude, fs.longitude, fs.major_area_id, fs.verification_status, fs.area_assignment_source",
             $study_year,
             $alternate
         ), ARRAY_A);
-    }
-
-    private static function active_assignments($year, $direction)
-    {
-        global $wpdb;
-        $groups = Olama_Transportation_DB::table('planning_groups');
-        $members = Olama_Transportation_DB::table('planning_group_families');
-        $buses = Olama_Transportation_DB::table('buses');
-        $rows = $wpdb->get_results($wpdb->prepare(
-            "SELECT m.family_uid,g.id group_id,g.group_name,g.color,g.status,g.bus_id,g.trip_number,b.bus_number
-             FROM {$members} m INNER JOIN {$groups} g ON g.id=m.group_id LEFT JOIN {$buses} b ON b.id=g.bus_id
-             WHERE g.academic_year_id=%d AND g.direction=%s AND g.status IN ('draft','approved')",
-            $year,
-            $direction
-        ), ARRAY_A);
-        $result = array();
-        foreach ($rows as $row) {
-            $result[$row['family_uid']] = array(
-                'group_id' => (int) $row['group_id'], 'group_name' => $row['group_name'], 'color' => $row['color'],
-                'status' => $row['status'], 'bus_id' => (int) $row['bus_id'], 'bus_number' => $row['bus_number'], 'trip_number' => (int) $row['trip_number'],
-            );
-        }
-        return $result;
     }
 
     private static function areas()

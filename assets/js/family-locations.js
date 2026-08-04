@@ -1,0 +1,69 @@
+(function () {
+    'use strict';
+    var root = document.getElementById('olama-family-locations-app');
+    if (!root || typeof olamaFamilyLocations === 'undefined') return;
+    var cfg = olamaFamilyLocations, i18n = cfg.i18n, state = {page:1, controller:null, items:[], selected:new Set()};
+    function el(id){return document.getElementById(id);} function txt(v){return document.createTextNode(v==null?'':String(v));}
+    function option(select,value,label){var o=document.createElement('option');o.value=value;o.appendChild(txt(label));select.appendChild(o);}
+    function request(path, options) {
+        options=options||{}; options.headers=Object.assign({'X-WP-Nonce':cfg.restNonce,'Content-Type':'application/json'},options.headers||{});
+        return fetch(cfg.restUrl+path,options).then(function(r){return r.json().catch(function(){return {};}).then(function(body){if(!r.ok){var e=new Error(body.message||i18n.networkError);e.code=body.code;e.data=body.data;throw e;}return body;});});
+    }
+    function query() {
+        var p=new URLSearchParams({academic_year_id:el('family-locations-year').value,page:state.page,per_page:el('family-page-size').value,
+            search:el('family-location-search').value,major_area_id:el('family-location-area-filter').value,
+            location_status:el('family-location-status-filter').value,morning_status:el('family-location-morning-filter').value,
+            afternoon_status:el('family-location-afternoon-filter').value,missing_locations:el('family-location-missing-only').checked?'1':''});
+        return p.toString();
+    }
+    function load(message) {
+        if(state.controller)state.controller.abort(); state.controller=new AbortController();
+        el('family-locations-body').innerHTML='<tr><td colspan="8">'+i18n.loading+'</td></tr>';
+        return request('family-locations?'+query(),{signal:state.controller.signal}).then(function(data){state.items=data.items;render(data);if(message)feedback(message,'success');}).catch(function(error){if(error.name==='AbortError')return;empty(error.message||i18n.networkError,true);});
+    }
+    function feedback(message,type){var box=el('family-location-feedback');box.textContent=message;box.className='olama-operation-result is-'+type;}
+    function statusText(status){var map={assigned:i18n.assigned,missing_area:i18n.missingArea,area_not_allocated:i18n.areaNotAllocated,capacity_problem:i18n.capacityProblem};return map[status]||String(status||i18n.missingArea).replace(/_/g,' ');}
+    function locationText(item){if(item.latitude===null||item.longitude===null)return i18n.missingLocation;var map={needs_review:i18n.needsReview,approved:i18n.approved,rejected:i18n.invalidLocation};return map[item.verification_status]||i18n.invalidLocation;}
+    function allocationLine(direction,effective){var wrap=document.createElement('div');wrap.className='olama-effective-line';var strong=document.createElement('strong');strong.appendChild(txt(direction+': '));wrap.appendChild(strong);wrap.appendChild(txt(effective&&effective.bus_id?effective.bus_number+' · '+i18n.trip+' '+effective.trip_number:statusText(effective&&effective.assignment_status)));return wrap;}
+    function areaSelect(item){var select=document.createElement('select');select.className='family-planning-area';select.disabled=!cfg.canManage;select.setAttribute('aria-label',i18n.saveArea+' '+item.family_name);option(select,'',i18n.unassigned);cfg.areas.forEach(function(a){option(select,a.id,a.name);});select.value=item.major_area_id||'';select.dataset.original=select.value;select.addEventListener('change',function(){rowMessage(item.family_uid,i18n.unsaved,'warning');});return select;}
+    function button(label,cls,handler){var b=document.createElement('button');b.type='button';b.className=cls||'button';b.appendChild(txt(label));b.addEventListener('click',handler);return b;}
+    function rowMessage(uid,message,type){var node=document.querySelector('[data-row-feedback="'+CSS.escape(uid)+'"]');if(node){node.textContent=message;node.className='olama-row-feedback is-'+type;}}
+    function saveArea(item,row,clear) {
+        var select=row.querySelector('.family-planning-area'), area=clear?0:parseInt(select.value||0,10), buttons=row.querySelectorAll('button');buttons.forEach(function(b){b.disabled=true;});rowMessage(item.family_uid,i18n.saving,'loading');
+        request('family-locations/by-family/'+encodeURIComponent(item.family_uid)+'/area',{method:'POST',body:JSON.stringify({academic_year_id:parseInt(el('family-locations-year').value,10),major_area_id:area})})
+            .then(function(){return load(i18n.saved);}).catch(function(error){rowMessage(item.family_uid,error.message||i18n.saveFailed,'error');buttons.forEach(function(b){b.disabled=false;});});
+    }
+    function render(data) {
+        var body=el('family-locations-body');body.innerHTML='';
+        data.items.forEach(function(item){
+            var row=document.createElement('tr');row.dataset.familyUid=item.family_uid;
+            var check=row.insertCell();check.className='check-column';var cb=document.createElement('input');cb.type='checkbox';cb.className='family-location-select';cb.value=item.family_uid;cb.checked=state.selected.has(item.family_uid);cb.setAttribute('aria-label',item.family_name);cb.addEventListener('change',function(){if(cb.checked)state.selected.add(item.family_uid);else state.selected.delete(item.family_uid);selectedCount();});check.appendChild(cb);
+            var family=row.insertCell();var name=document.createElement('strong');name.appendChild(txt(item.family_name));family.appendChild(name);var id=document.createElement('small');id.appendChild(txt('#'+item.oracle_family_id));family.appendChild(id);
+            row.insertCell().appendChild(txt(item.registered_students));row.insertCell().appendChild(txt(item.trans_region_name||'—'));
+            var area=row.insertCell(),select=areaSelect(item);area.appendChild(select);var inline=document.createElement('div');inline.className='olama-inline-actions';var saveButton=button(i18n.saveArea,'button button-small',function(){saveArea(item,row,false);}),clearButton=button(i18n.clear,'button-link-delete',function(){saveArea(item,row,true);});saveButton.disabled=clearButton.disabled=!cfg.canManage;inline.appendChild(saveButton);inline.appendChild(clearButton);area.appendChild(inline);var msg=document.createElement('small');msg.dataset.rowFeedback=item.family_uid;msg.className='olama-row-feedback';area.appendChild(msg);
+            var loc=row.insertCell();var badge=document.createElement('span');badge.className='olama-status-pill olama-status-'+(item.latitude===null?'missing':item.verification_status);badge.appendChild(txt(locationText(item)));loc.appendChild(badge);
+            var effective=row.insertCell();effective.appendChild(allocationLine(i18n.morning,item.effective_morning));effective.appendChild(allocationLine(i18n.afternoon,item.effective_afternoon));
+            var actions=row.insertCell();actions.appendChild(button(i18n.details,'button button-small',function(){openDetails(item);}));if(item.latitude!==null&&item.longitude!==null){var map=document.createElement('a');map.className='button button-small';map.target='_blank';map.rel='noopener';map.href='https://www.google.com/maps?q='+encodeURIComponent(item.latitude+','+item.longitude);map.appendChild(txt(i18n.map));actions.appendChild(map);}body.appendChild(row);
+        });
+        if(!data.items.length)empty(i18n.noMatches,false);
+        var m=data.metrics;el('family-metric-registered').textContent=m.registered_transportation_families;el('family-metric-valid').textContent=m.families_with_valid_coordinates;el('family-metric-missing').textContent=m.families_missing_coordinates;el('family-metric-with-area').textContent=m.families_with_planning_areas;el('family-metric-without-area').textContent=m.families_without_planning_areas;
+        var p=data.pagination;el('family-results-count').textContent=p.total+' results';el('family-page-label').textContent=p.page+' / '+p.total_pages;el('family-page-prev').disabled=p.page<=1;el('family-page-next').disabled=p.page>=p.total_pages;selectedCount();
+    }
+    function empty(message,error){el('family-locations-body').innerHTML='';var r=el('family-locations-body').insertRow(),c=r.insertCell();c.colSpan=8;c.className='olama-empty-state'+(error?' is-error':'');c.appendChild(txt(message));}
+    function selectedCount(){el('family-selected-count').textContent=state.selected.size+' '+i18n.selected;}
+    function openDetails(item){
+        var dialog=el('family-location-dialog'),content=el('family-location-dialog-content');el('family-location-dialog-title').textContent=item.family_name+' #'+item.oracle_family_id;content.innerHTML='';
+        var grid=document.createElement('dl');grid.className='olama-family-detail-grid';[['phone',item.mobile||'—'],['coordinates',item.latitude!==null?item.latitude+', '+item.longitude:i18n.missingLocation],['source',item.location_source||'—'],['assignmentSource',item.area_assignment_source||'—'],['assignedAt',item.area_assigned_at||'—'],['notes',item.notes||'—']].forEach(function(pair){var dt=document.createElement('dt');dt.appendChild(txt(i18n[pair[0]]));var dd=document.createElement('dd');dd.appendChild(txt(pair[1]));grid.appendChild(dt);grid.appendChild(dd);});content.appendChild(grid);content.appendChild(allocationLine(i18n.morning,item.effective_morning));content.appendChild(allocationLine(i18n.afternoon,item.effective_afternoon));
+        var label=document.createElement('label');label.appendChild(txt(i18n.location));var input=document.createElement('input');input.type='text';input.className='widefat';input.disabled=!cfg.canManage;input.placeholder='31.9539, 35.9106';input.value=item.latitude!==null?item.latitude+', '+item.longitude:'';label.appendChild(input);content.appendChild(label);var saveLocation=button(i18n.saveLocation,'button button-primary',function(){var b=this;b.disabled=true;el('family-location-dialog-feedback').textContent=i18n.saving;request('family-locations/'+encodeURIComponent(item.family_uid),{method:'PUT',body:JSON.stringify({location:input.value})}).then(function(){dialog.close();load(i18n.saved);}).catch(function(e){b.disabled=false;el('family-location-dialog-feedback').textContent=e.message;});});saveLocation.disabled=!cfg.canManage;content.appendChild(saveLocation);
+        dialog.showModal();dialog.querySelector('.olama-dialog-close').focus();
+    }
+    function filtersChanged(){state.page=1;load();}
+    ['family-location-area-filter','family-location-status-filter','family-location-morning-filter','family-location-afternoon-filter','family-location-missing-only','family-page-size'].forEach(function(id){el(id).addEventListener('change',filtersChanged);});
+    var searchTimer;el('family-location-search').addEventListener('input',function(){clearTimeout(searchTimer);searchTimer=setTimeout(filtersChanged,250);});
+    el('family-locations-year').addEventListener('change',filtersChanged);el('family-location-reset').addEventListener('click',function(){['family-location-search'].forEach(function(id){el(id).value='';});['family-location-area-filter','family-location-status-filter','family-location-morning-filter','family-location-afternoon-filter'].forEach(function(id){el(id).value='all';});el('family-location-missing-only').checked=false;filtersChanged();});
+    el('family-location-select-all').addEventListener('change',function(){var checked=this.checked;state.items.forEach(function(item){if(checked)state.selected.add(item.family_uid);else state.selected.delete(item.family_uid);});document.querySelectorAll('.family-location-select').forEach(function(box){box.checked=checked;});selectedCount();});
+    el('family-location-bulk-save').addEventListener('click',function(){if(!state.selected.size){feedback(i18n.noMatches,'error');return;}var b=this;b.disabled=true;feedback(i18n.saving,'loading');request('family-locations/bulk-area',{method:'POST',body:JSON.stringify({family_uids:Array.from(state.selected),major_area_id:parseInt(el('family-location-bulk-area').value||0,10),academic_year_id:parseInt(el('family-locations-year').value,10)})}).then(function(result){state.selected.clear();return load(i18n.bulkComplete.replace('%d',result.updated));}).catch(function(e){feedback(e.message,'error');}).finally(function(){b.disabled=false;});});
+    el('family-page-prev').addEventListener('click',function(){if(state.page>1){state.page--;load();}});el('family-page-next').addEventListener('click',function(){state.page++;load();});
+    if(!cfg.canManage){el('family-location-select-all').disabled=true;el('family-location-bulk-area').disabled=true;el('family-location-bulk-save').disabled=true;}
+    load();
+}());

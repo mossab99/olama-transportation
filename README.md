@@ -1,53 +1,61 @@
-# Olama Transportation 2.3.0
+# Olama Transportation 2.4.1
 
-School transportation planning for the Olama ecosystem. Version 2.3 adds a map-based, family-level geographic planner to the existing Area Planning tab while retaining legacy assignments and route planning.
+School transportation planning for the Olama ecosystem. Version 2.4.1 completes the area-based workflow with location-independent family classification, focused administration screens, server-confirmed preview-before-save, pagination, and concurrency conflict handling.
 
-## Data ownership and setup
+## Effective planning model
 
-- Oracle owns family, student, employee, bus, and transportation-region master data.
-- Olama Oracle Sync is the only Oracle consumer. Olama Core stores the canonical mirror; Transportation reads Core services and never calls Oracle.
-- Transportation owns family coordinates, normalized transport enrollments, local area projections, bus planning overrides, geographic groups, routes, and audits.
-- Run the Core transportation import, refresh buses, then click **Refresh Areas from Olama Core** in Area Planning. The area sync is idempotent, preserves local colors/boundaries/notes, and never hard-deletes missing Core regions.
-- Save/import family coordinates, open Area Planning, choose a year and direction, then select families by marker or polygon and save a bus-trip group.
+The active relationship is:
 
-## Geographic planner
+`Student -> Family -> Family Stop -> Planning Area -> Academic Year + Direction Area Allocation -> Bus + Trip`
 
-The planning relationship is `Family -> Geographic Group -> Bus Trip -> Physical Bus`. Morning and afternoon are independent. A family can belong to one active group per year and direction, and a bus-trip slot can be occupied by only one active group.
+`wp_olama_transport_family_stops.major_area_id` is the family-level classification. Every student in the family inherits that planning area. `wp_olama_transport_area_bus_assignments` allocates an area independently for each academic year and direction. Morning and afternoon can use different buses and trip numbers. Changing a family area changes its effective assignment immediately; no student assignment row is updated.
 
-Groups move through `draft -> approved -> archived`. Approved groups are read-only until an approval user reverts them. Archiving releases family and trip conflicts. Geographic groups are not written to `wp_olama_student_bus_assignments` and are not converted automatically into route versions.
+The legacy `wp_olama_student_bus_assignments` table remains the separate annual student-assignment workflow and is never written by area planning.
 
-Transport demand comes from active `wp_olama_transport_enrollments` rows and honors the morning/afternoon flags. If an academic year has no transport enrollments at all, the map uses academic registration for both directions and displays an explicit fallback warning; the sources are never silently mixed. Both `needs_review` and `approved` in-bounds family locations are selectable during the pilot.
+## Planning workflow
 
-Each bus defaults to two morning and three afternoon trip slots. Effective trip capacity is the positive planning capacity when present, otherwise Core capacity. A planning override may be entered when Core capacity is zero; a bus with zero effective capacity is unavailable. Capacity is enforced independently for every trip.
+1. In **Family Locations**, select an active local Planning Area per family or use the atomic bulk action. This works even before coordinates exist: Transportation creates a nullable location placeholder without inventing a map point. Oracle Area remains read-only Core data.
+2. Add or update the family pickup coordinates when available; this preserves the Planning Area and its audit metadata.
+3. In **Area Planning**, select academic year and direction, then allocate each Planning Area to an active bus and valid direction-specific trip number.
+4. Review the server-confirmed capacity preview and save. The map displays effective area/bus-trip allocation and never determines membership.
 
-Leaflet and Leaflet Draw are bundled locally. Map tiles use the isolated OpenStreetMap-compatible URL configured in the planner bootstrap; attribution remains visible.
+The effective capacity is positive `planning_capacity`, otherwise `passenger_capacity`. The preview is calculated on the server and is advisory; save always recalculates inside the transaction. A preview hash detects intervening demand/capacity changes and returns HTTP 409 with updated capacity. Demand counts active, direction-enabled transportation enrollment students. If the selected academic year has no active enrollment rows, the entire context uses academic-registration fallback and displays a warning; sources are never mixed. Multiple areas may share a bus trip, and their student demand is aggregated. Over-capacity saves return a conflict instructing the operator to create/use a smaller planning area and manually move families; areas are never split automatically.
 
-## Tables added in 2.3
+## Core synchronization and ownership
 
-- `wp_olama_transport_planning_groups`: group, direction, trip, bus, lifecycle, polygon, and server-calculated snapshots.
-- `wp_olama_transport_planning_group_families`: authoritative family membership and location/demand audit snapshots.
+Oracle ERP is read only through Olama Oracle Sync and Olama Core. Transportation never connects to Oracle. Core region refresh is idempotent, preserves local colors, notes and boundaries, and deactivates only missing Core-mapped areas. Unmapped local planning areas remain active. Core backfill fills only unassigned, non-manually-cleared family stops and records `area_assignment_source=core`. Manual classification or clearing records the actor/time and is not overwritten. Coordinate saves preserve all existing area metadata.
 
-The bus projection gains `morning_trip_count` and `afternoon_trip_count`. Core refreshes do not overwrite these local planning fields.
+## Database changes in 2.4.1
+
+- Family stops add `area_assignment_source`, `area_assigned_by`, and `area_assigned_at`.
+- Family-stop latitude and longitude are nullable so planning classification can precede location capture.
+- Area bus assignments add `trip_number`, `notes`, and `updated_by`.
+- The canonical assignment key is academic year + direction + planning area. Bus-trip lookup includes academic year + direction + bus + trip. Multiple areas may use the same bus trip.
+- Installation explicitly removes the obsolete area+bus unique index and adds the new area key when existing data is unambiguous. Historical rows are retained.
+- Polygon group and group-family tables are retained unchanged for read-only history.
 
 ## REST API
 
 Namespace: `/wp-json/olama-transportation/v1`.
 
-- `GET /planning/map-data`
-- `GET /planning/trip-slots`
-- `GET|POST /planning/groups`
-- `GET|PUT /planning/groups/{id}`
-- `POST /planning/groups/{id}/approve`
-- `POST /planning/groups/{id}/revert`
-- `POST /planning/groups/{id}/archive`
+- `GET|POST /planning/area-allocations`
+- `POST /planning/area-allocations/preview`
+- `DELETE /planning/area-allocations/{id}`
+- `POST /family-locations/{id}/area`
+- `POST /family-locations/by-family/{family_uid}/area`
+- `POST /family-locations/bulk-area`
+- `GET /family-locations`
+- `GET /planning/areas/{id}/families`
+- `GET /planning/map-data` (now area-based)
 - `POST /core/refresh-areas`
-- Existing CRUD, route, optimizer, import, bus-refresh, report, and settings endpoints remain available.
 
-View access requires `olama_access_transport_mgmt`; draft changes require `olama_manage_transport_buses`; lifecycle operations require `olama_approve_transport_routes` or the existing management fallback. WordPress REST nonces and server-side authorization apply to every endpoint.
+Legacy `/planning/groups` lifecycle routes remain available for compatibility but are deprecated and are not called by the active admin screen.
 
-## Safety and testing
+View access requires `olama_access_transport_mgmt`; classification and allocation changes require `olama_manage_transport_buses`. WordPress REST nonce and capability checks apply.
 
-Persistence uses prepared queries, InnoDB transactions and row locks. The server re-fetches families and recalculates demand, locations, conflicts, trip range, and capacity. Polygon input accepts only canonical Polygon GeoJSON. Dynamic map UI content is constructed as text, and no Oracle credentials or unnecessary student details are exposed.
+## Concurrency and safety
+
+Bulk family changes validate first, then lock and update every family stop in one transaction. Area allocation changes lock the area assignment context, planning area, selected bus, and competing bus-trip allocation rows; demand and capacity are recalculated inside the transaction. The bus lock serializes simultaneous allocations to the same physical bus, preventing two requests from over-allocating a trip based on stale browser values. All counts, bus state, trip range, and capacity are server-authoritative.
 
 Run:
 
@@ -56,4 +64,4 @@ phpunit -c phpunit.xml.dist
 find . -name '*.php' -print0 | xargs -0 -n1 php -l
 ```
 
-Known limitations: the MVP does not optimize stop order, calculate timing/matrices, cluster markers, create shared stops, create route versions, or synchronize legacy annual assignments. It requires network access to the configured tile provider to display the basemap; planning markers and persistence remain local.
+Current limitations: planning does not automatically split areas, optimize stop order, calculate trip timing, generate shared stops, cluster markers, or convert allocations into route versions. Existing boundary GeoJSON is reference-only. Legacy polygon groups are historical and ambiguous groups are not auto-converted. The basemap still requires access to the configured tile provider.

@@ -1,0 +1,357 @@
+<?php
+
+class Olama_Transportation_Area_Assignments_Test extends WP_UnitTestCase
+{
+    private $year_id;
+    private $area_one;
+    private $area_two;
+    private $bus_id;
+
+    public function setUp(): void
+    {
+        parent::setUp();
+        global $wpdb;
+        Olama_Transportation_DB::install();
+        $now = current_time('mysql', true);
+        $wpdb->insert($wpdb->prefix . 'olama_academic_years', array(
+            'code' => '2026-2027', 'year_name' => '2026-2027', 'start_date' => '2026-08-01', 'end_date' => '2027-07-31', 'created_at' => $now, 'updated_at' => $now,
+        ));
+        $this->year_id = (int) $wpdb->insert_id;
+        $this->area_one = $this->create_area('Area One');
+        $this->area_two = $this->create_area('Area Two');
+        $this->bus_id = $this->create_bus(20, 0, 2, 3);
+    }
+
+    private function create_area($name, $status = 'active')
+    {
+        global $wpdb;
+        $now = current_time('mysql', true);
+        $wpdb->insert(Olama_Transportation_DB::table('major_areas'), array(
+            'name' => $name, 'code' => strtoupper(str_replace(' ', '-', $name)) . '-' . wp_generate_password(4, false), 'status' => $status, 'created_at' => $now, 'updated_at' => $now,
+        ));
+        return (int) $wpdb->insert_id;
+    }
+
+    private function create_bus($capacity, $planning = 0, $morning = 2, $afternoon = 3, $status = 'active')
+    {
+        global $wpdb;
+        $now = current_time('mysql', true);
+        $wpdb->insert(Olama_Transportation_DB::table('buses'), array(
+            'core_bus_uid' => 'BUS-' . wp_generate_uuid4(), 'bus_number' => 'Bus ' . wp_generate_password(4, false),
+            'passenger_capacity' => $capacity, 'planning_capacity' => $planning, 'morning_trip_count' => $morning,
+            'afternoon_trip_count' => $afternoon, 'status' => $status, 'created_at' => $now, 'updated_at' => $now,
+        ));
+        return (int) $wpdb->insert_id;
+    }
+
+    private function create_stop($area_id = null, $source = 'core', $suffix = '')
+    {
+        global $wpdb;
+        $now = current_time('mysql', true);
+        $uid = 'FAM-' . ($suffix ?: wp_generate_password(5, false));
+        $oracle = 'ORA-' . $uid;
+        $wpdb->insert(olama_core()->read_models()->table('families'), array(
+            'family_uid' => $uid, 'oracle_family_id' => $oracle, 'sponsor_full_name' => $uid,
+            'trans_region_id' => 'R-' . $uid, 'trans_region_name' => 'Oracle Region', 'created_at' => $now, 'updated_at' => $now,
+        ));
+        $wpdb->insert(Olama_Transportation_DB::table('family_stops'), array(
+            'family_uid' => $uid, 'oracle_family_id' => $oracle, 'latitude' => 31.95, 'longitude' => 35.91,
+            'major_area_id' => $area_id, 'area_assignment_source' => $source, 'verification_status' => 'approved', 'created_at' => $now, 'updated_at' => $now,
+        ));
+        return array('id' => (int) $wpdb->insert_id, 'family_uid' => $uid, 'oracle_family_id' => $oracle);
+    }
+
+    private function add_demand($stop, $count, $morning = 1, $afternoon = 1)
+    {
+        global $wpdb;
+        $now = current_time('mysql', true);
+        for ($i = 1; $i <= $count; $i++) {
+            $wpdb->insert(Olama_Transportation_DB::table('enrollments'), array(
+                'student_uid' => $stop['family_uid'] . '-S' . $i, 'family_uid' => $stop['family_uid'], 'oracle_family_id' => $stop['oracle_family_id'],
+                'oracle_student_id' => 'OS-' . $stop['family_uid'] . '-' . $i, 'academic_year_id' => $this->year_id,
+                'morning_enabled' => $morning, 'afternoon_enabled' => $afternoon, 'status' => 'active', 'created_at' => $now, 'updated_at' => $now,
+            ));
+        }
+    }
+
+    private function assignment($area, $bus = null, $trip = 1, $direction = 'morning')
+    {
+        return array('academic_year_id' => $this->year_id, 'direction' => $direction, 'major_area_id' => $area, 'bus_id' => $bus ?: $this->bus_id, 'trip_number' => $trip);
+    }
+
+    public function test_family_stop_can_be_manually_assigned_to_active_area()
+    {
+        $stop = $this->create_stop();
+        $result = Olama_Transportation_Family_Area_Assignments::assign($stop['id'], $this->area_one);
+        $this->assertFalse(is_wp_error($result));
+        $row = Olama_Transportation_Repository::get_item('family-stops', $stop['id']);
+        $this->assertSame($this->area_one, (int) $row['major_area_id']);
+        $this->assertSame('manual', $row['area_assignment_source']);
+    }
+
+    public function test_family_without_location_can_be_classified_by_uid()
+    {
+        global $wpdb;
+        $now = current_time('mysql', true);
+        $uid = 'FAM-NO-LOCATION';
+        $wpdb->insert(olama_core()->read_models()->table('families'), array(
+            'family_uid' => $uid, 'oracle_family_id' => 'ORA-NO-LOCATION', 'sponsor_full_name' => 'No Location',
+            'trans_region_name' => 'Oracle Region', 'created_at' => $now, 'updated_at' => $now,
+        ));
+        $result = Olama_Transportation_Family_Area_Assignments::assign_family($uid, $this->area_one, $this->year_id);
+        $this->assertFalse(is_wp_error($result));
+        $stop = $result['family_stop'];
+        $this->assertNull($stop['latitude']);
+        $this->assertNull($stop['longitude']);
+        $this->assertSame($this->area_one, (int) $stop['major_area_id']);
+        $this->assertSame('planning_placeholder', $stop['source']);
+    }
+
+    public function test_bulk_family_uid_assignment_is_atomic_when_one_family_is_missing()
+    {
+        $stop = $this->create_stop(null, 'core', 'UIDATOMIC');
+        $result = Olama_Transportation_Family_Area_Assignments::bulk_assign_families(array($stop['family_uid'], 'DOES-NOT-EXIST'), $this->area_one, $this->year_id);
+        $this->assertWPError($result);
+        $this->assertNull(Olama_Transportation_Repository::get_item('family-stops', $stop['id'])['major_area_id']);
+    }
+
+    public function test_inactive_area_is_rejected()
+    {
+        $result = Olama_Transportation_Family_Area_Assignments::assign($this->create_stop()['id'], $this->create_area('Inactive', 'inactive'));
+        $this->assertWPError($result);
+        $this->assertSame('invalid_planning_area', $result->get_error_code());
+    }
+
+    public function test_missing_area_is_rejected()
+    {
+        $this->assertWPError(Olama_Transportation_Family_Area_Assignments::assign($this->create_stop()['id'], 999999));
+    }
+
+    public function test_clearing_family_area_preserves_coordinates()
+    {
+        $stop = $this->create_stop($this->area_one, 'manual');
+        Olama_Transportation_Family_Area_Assignments::assign($stop['id'], 0);
+        $row = Olama_Transportation_Repository::get_item('family-stops', $stop['id']);
+        $this->assertNull($row['major_area_id']);
+        $this->assertEquals(31.95, $row['latitude']);
+    }
+
+    public function test_bulk_assignment_is_atomic_when_one_stop_is_missing()
+    {
+        $stop = $this->create_stop();
+        $result = Olama_Transportation_Family_Area_Assignments::bulk_assign(array($stop['id'], 999999), $this->area_one);
+        $this->assertWPError($result);
+        $this->assertNull(Olama_Transportation_Repository::get_item('family-stops', $stop['id'])['major_area_id']);
+    }
+
+    public function test_bulk_assignment_updates_every_valid_stop()
+    {
+        $one = $this->create_stop(null, 'core', 'B1'); $two = $this->create_stop(null, 'core', 'B2');
+        $result = Olama_Transportation_Family_Area_Assignments::bulk_assign(array($one['id'], $two['id']), $this->area_two);
+        $this->assertSame(2, $result['updated']);
+    }
+
+    public function test_core_backfill_only_updates_unassigned_stops()
+    {
+        global $wpdb;
+        $manual = $this->create_stop($this->area_two, 'manual', 'M1');
+        $empty = $this->create_stop(null, 'core', 'M2');
+        $wpdb->insert(Olama_Transportation_DB::table('area_mappings'), array('oracle_region_id' => 'R-' . $empty['family_uid'], 'major_area_id' => $this->area_one, 'created_at' => current_time('mysql', true), 'updated_at' => current_time('mysql', true)));
+        Olama_Transportation_Area_Sync::backfill_family_stops(false);
+        $this->assertSame($this->area_two, (int) Olama_Transportation_Repository::get_item('family-stops', $manual['id'])['major_area_id']);
+        $this->assertSame($this->area_one, (int) Olama_Transportation_Repository::get_item('family-stops', $empty['id'])['major_area_id']);
+    }
+
+    public function test_core_backfill_records_core_source()
+    {
+        global $wpdb;
+        $stop = $this->create_stop(null, 'core', 'C1');
+        $wpdb->insert(Olama_Transportation_DB::table('area_mappings'), array('oracle_region_id' => 'R-' . $stop['family_uid'], 'major_area_id' => $this->area_one, 'created_at' => current_time('mysql', true), 'updated_at' => current_time('mysql', true)));
+        Olama_Transportation_Area_Sync::backfill_family_stops(false);
+        $this->assertSame('core', Olama_Transportation_Repository::get_item('family-stops', $stop['id'])['area_assignment_source']);
+    }
+
+    public function test_coordinate_save_preserves_manual_area_metadata()
+    {
+        $stop = $this->create_stop($this->area_one, 'manual', 'COORD');
+        $result = Olama_Transportation_Family_Locations::save($stop['family_uid'], '31.9600,35.9200');
+        $this->assertFalse(is_wp_error($result));
+        $row = Olama_Transportation_Repository::get_item('family-stops', $stop['id']);
+        $this->assertSame($this->area_one, (int) $row['major_area_id']);
+        $this->assertSame('manual', $row['area_assignment_source']);
+    }
+
+    public function test_area_can_have_separate_morning_and_afternoon_rows()
+    {
+        $this->assertFalse(is_wp_error(Olama_Transportation_Area_Trip_Assignments::save($this->assignment($this->area_one))));
+        $this->assertFalse(is_wp_error(Olama_Transportation_Area_Trip_Assignments::save($this->assignment($this->area_one, null, 1, 'afternoon'))));
+    }
+
+    public function test_area_save_uses_upsert_for_same_year_and_direction()
+    {
+        global $wpdb;
+        Olama_Transportation_Area_Trip_Assignments::save($this->assignment($this->area_one));
+        Olama_Transportation_Area_Trip_Assignments::save($this->assignment($this->area_one, null, 2));
+        $this->assertSame(1, (int) $wpdb->get_var($wpdb->prepare('SELECT COUNT(*) FROM ' . Olama_Transportation_DB::table('area_bus_assignments') . ' WHERE academic_year_id=%d AND direction=\'morning\' AND major_area_id=%d', $this->year_id, $this->area_one)));
+    }
+
+    public function test_multiple_areas_can_share_one_bus_trip()
+    {
+        $this->assertFalse(is_wp_error(Olama_Transportation_Area_Trip_Assignments::save($this->assignment($this->area_one))));
+        $this->assertFalse(is_wp_error(Olama_Transportation_Area_Trip_Assignments::save($this->assignment($this->area_two))));
+    }
+
+    public function test_combined_area_demand_is_aggregated_per_trip()
+    {
+        $one = $this->create_stop($this->area_one, 'manual', 'D1'); $this->add_demand($one, 3);
+        $two = $this->create_stop($this->area_two, 'manual', 'D2'); $this->add_demand($two, 4);
+        Olama_Transportation_Area_Trip_Assignments::save($this->assignment($this->area_one));
+        $result = Olama_Transportation_Area_Trip_Assignments::save($this->assignment($this->area_two));
+        $this->assertSame(7, $result['capacity']['resulting_used_seats']);
+    }
+
+    public function test_overcapacity_assignment_is_rejected()
+    {
+        $bus = $this->create_bus(5); $stop = $this->create_stop($this->area_one, 'manual', 'OVER'); $this->add_demand($stop, 6);
+        $result = Olama_Transportation_Area_Trip_Assignments::save($this->assignment($this->area_one, $bus));
+        $this->assertWPError($result); $this->assertSame('capacity_exceeded', $result->get_error_code());
+    }
+
+    public function test_edit_excludes_previous_area_demand()
+    {
+        $stop = $this->create_stop($this->area_one, 'manual', 'EDIT'); $this->add_demand($stop, 12);
+        Olama_Transportation_Area_Trip_Assignments::save($this->assignment($this->area_one, $this->bus_id, 1));
+        $result = Olama_Transportation_Area_Trip_Assignments::save($this->assignment($this->area_one, $this->bus_id, 2));
+        $this->assertSame(12, $result['capacity']['resulting_used_seats']);
+    }
+
+    public function test_capacity_preview_does_not_write_assignment()
+    {
+        global $wpdb;
+        $before = (int) $wpdb->get_var('SELECT COUNT(*) FROM ' . Olama_Transportation_DB::table('area_bus_assignments'));
+        $preview = Olama_Transportation_Area_Trip_Assignments::preview($this->assignment($this->area_one));
+        $this->assertFalse(is_wp_error($preview));
+        $this->assertNotEmpty($preview['preview_hash']);
+        $this->assertSame($before, (int) $wpdb->get_var('SELECT COUNT(*) FROM ' . Olama_Transportation_DB::table('area_bus_assignments')));
+    }
+
+    public function test_stale_preview_hash_is_rejected_before_write()
+    {
+        global $wpdb;
+        $payload = $this->assignment($this->area_one);
+        $payload['preview_hash'] = str_repeat('0', 64);
+        $result = Olama_Transportation_Area_Trip_Assignments::save($payload);
+        $this->assertWPError($result);
+        $this->assertSame('capacity_changed', $result->get_error_code());
+        $this->assertSame(0, (int) $wpdb->get_var('SELECT COUNT(*) FROM ' . Olama_Transportation_DB::table('area_bus_assignments')));
+    }
+
+    public function test_allocation_list_hides_empty_areas_and_is_paginated()
+    {
+        $stop = $this->create_stop($this->area_one, 'manual', 'LIST');
+        $this->add_demand($stop, 1);
+        $result = Olama_Transportation_Area_Trip_Assignments::list_assignments($this->year_id, 'morning', array('per_page'=>20));
+        $this->assertCount(1, $result['areas']);
+        $this->assertSame($this->area_one, (int) $result['areas'][0]['id']);
+        $this->assertSame(1, $result['pagination']['total']);
+        $all = Olama_Transportation_Area_Trip_Assignments::list_assignments($this->year_id, 'morning', array('show_all'=>1,'per_page'=>20));
+        $this->assertGreaterThanOrEqual(2, $all['pagination']['total']);
+    }
+
+    public function test_missing_coordinates_do_not_prevent_area_inheritance()
+    {
+        global $wpdb;
+        $now = current_time('mysql', true);
+        $uid = 'FAM-MISSING-INHERIT';
+        $oracle = 'ORA-MISSING-INHERIT';
+        $wpdb->insert(olama_core()->read_models()->table('families'), array('family_uid'=>$uid,'oracle_family_id'=>$oracle,'sponsor_full_name'=>'Missing Inherit','created_at'=>$now,'updated_at'=>$now));
+        Olama_Transportation_Family_Area_Assignments::assign_family($uid, $this->area_one, $this->year_id);
+        $wpdb->insert(Olama_Transportation_DB::table('enrollments'), array('student_uid'=>$uid.'-S1','family_uid'=>$uid,'oracle_family_id'=>$oracle,'oracle_student_id'=>'OS-'.$uid,'academic_year_id'=>$this->year_id,'morning_enabled'=>1,'afternoon_enabled'=>0,'status'=>'active','created_at'=>$now,'updated_at'=>$now));
+        Olama_Transportation_Area_Trip_Assignments::save($this->assignment($this->area_one));
+        $resolved = Olama_Transportation_Effective_Assignments::resolve($this->year_id, 'morning');
+        $family = array_values(array_filter($resolved['families'], function($item) use ($uid) { return $item['family_uid'] === $uid; }))[0];
+        $this->assertSame('missing_location', $family['location_status']);
+        $this->assertSame('assigned', $family['assignment_status']);
+        $this->assertSame($this->bus_id, $family['bus_id']);
+        $map = Olama_Transportation_Map_Data::get($this->year_id, 'morning');
+        $this->assertSame(1, $map['meta']['invalid_location_count']);
+        $this->assertCount(0, array_filter($map['families'], function($item) use ($uid) { return $item['family_uid'] === $uid; }));
+    }
+
+    public function test_morning_trip_number_is_validated()
+    {
+        $result = Olama_Transportation_Area_Trip_Assignments::preview($this->assignment($this->area_one, $this->bus_id, 3));
+        $this->assertWPError($result); $this->assertSame('invalid_trip_number', $result->get_error_code());
+    }
+
+    public function test_afternoon_trip_number_is_validated()
+    {
+        $result = Olama_Transportation_Area_Trip_Assignments::preview($this->assignment($this->area_one, $this->bus_id, 4, 'afternoon'));
+        $this->assertWPError($result); $this->assertSame('invalid_trip_number', $result->get_error_code());
+    }
+
+    public function test_inactive_bus_is_rejected()
+    {
+        $result = Olama_Transportation_Area_Trip_Assignments::preview($this->assignment($this->area_one, $this->create_bus(10, 0, 2, 3, 'inactive')));
+        $this->assertWPError($result); $this->assertSame('bus_unavailable', $result->get_error_code());
+    }
+
+    public function test_zero_capacity_bus_is_rejected()
+    {
+        $result = Olama_Transportation_Area_Trip_Assignments::preview($this->assignment($this->area_one, $this->create_bus(0)));
+        $this->assertWPError($result); $this->assertSame('bus_has_no_capacity', $result->get_error_code());
+    }
+
+    public function test_planning_capacity_overrides_passenger_capacity()
+    {
+        $result = Olama_Transportation_Area_Trip_Assignments::preview($this->assignment($this->area_one, $this->create_bus(30, 12)));
+        $this->assertSame(12, $result['effective_capacity']);
+    }
+
+    public function test_effective_assignment_uses_family_stop_area_not_legacy_group()
+    {
+        $stop = $this->create_stop($this->area_one, 'manual', 'MAP'); $this->add_demand($stop, 1);
+        Olama_Transportation_Area_Trip_Assignments::save($this->assignment($this->area_one));
+        $family = Olama_Transportation_Effective_Assignments::family($this->year_id, 'morning', $stop['id']);
+        $this->assertSame($this->bus_id, $family['bus_id']);
+    }
+
+    public function test_direction_specific_enrollment_counts_are_used()
+    {
+        $stop = $this->create_stop($this->area_one, 'manual', 'DIR'); $this->add_demand($stop, 2, 1, 0);
+        $morning = Olama_Transportation_Effective_Assignments::family($this->year_id, 'morning', $stop['id']);
+        $afternoon = Olama_Transportation_Effective_Assignments::family($this->year_id, 'afternoon', $stop['id']);
+        $this->assertSame(2, $morning['student_count']); $this->assertNull($afternoon);
+    }
+
+    public function test_academic_registration_fallback_is_explicit()
+    {
+        $resolved = Olama_Transportation_Effective_Assignments::resolve($this->year_id, 'morning');
+        $this->assertSame('academic_registration_fallback', $resolved['demand_mode']); $this->assertNotEmpty($resolved['warning']);
+    }
+
+    public function test_services_do_not_write_legacy_student_assignments()
+    {
+        global $wpdb;
+        $table = $wpdb->prefix . 'olama_student_bus_assignments'; $before = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$table}");
+        Olama_Transportation_Family_Area_Assignments::assign($this->create_stop()['id'], $this->area_one);
+        Olama_Transportation_Area_Trip_Assignments::save($this->assignment($this->area_one));
+        $this->assertSame($before, (int) $wpdb->get_var("SELECT COUNT(*) FROM {$table}"));
+    }
+
+    public function test_family_and_area_changes_create_audit_records()
+    {
+        global $wpdb;
+        Olama_Transportation_Family_Area_Assignments::assign($this->create_stop()['id'], $this->area_one);
+        Olama_Transportation_Area_Trip_Assignments::save($this->assignment($this->area_one));
+        $actions = $wpdb->get_col("SELECT action FROM " . Olama_Transportation_DB::table('audit_log'));
+        $this->assertContains('family_area_assigned', $actions); $this->assertContains('area_trip_assigned', $actions);
+    }
+
+    public function test_rest_permissions_reject_anonymous_user()
+    {
+        wp_set_current_user(0);
+        $rest = new Olama_Transportation_REST();
+        $this->assertFalse($rest->can_manage());
+    }
+}
