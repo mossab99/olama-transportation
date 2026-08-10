@@ -27,6 +27,8 @@ class Olama_Transportation_DB
             chassis_number varchar(100) DEFAULT NULL,
             passenger_capacity smallint(5) UNSIGNED NOT NULL,
             planning_capacity smallint(5) UNSIGNED DEFAULT NULL,
+            allow_multi_area tinyint(1) NOT NULL DEFAULT 0,
+            main_area_id bigint(20) UNSIGNED DEFAULT NULL,
             morning_trip_count tinyint(3) UNSIGNED NOT NULL DEFAULT 2,
             afternoon_trip_count tinyint(3) UNSIGNED NOT NULL DEFAULT 3,
             driver_employee_id varchar(50) DEFAULT NULL,
@@ -62,6 +64,7 @@ class Olama_Transportation_DB
             name varchar(150) NOT NULL,
             code varchar(50) NOT NULL,
             color varchar(20) DEFAULT '#1a56db',
+            area_type varchar(20) NOT NULL DEFAULT 'secondary',
             boundary_geojson longtext DEFAULT NULL,
             notes text DEFAULT NULL,
             status varchar(20) NOT NULL DEFAULT 'active',
@@ -167,6 +170,8 @@ class Olama_Transportation_DB
             major_area_id bigint(20) UNSIGNED NOT NULL,
             bus_id bigint(20) UNSIGNED NOT NULL,
             trip_number tinyint(3) UNSIGNED NOT NULL DEFAULT 1,
+            arrival_time time DEFAULT NULL,
+            departure_time time DEFAULT NULL,
             notes text DEFAULT NULL,
             is_locked tinyint(1) NOT NULL DEFAULT 0,
             status varchar(20) NOT NULL DEFAULT 'active',
@@ -175,11 +180,25 @@ class Olama_Transportation_DB
             created_at datetime NOT NULL,
             updated_at datetime NOT NULL,
             PRIMARY KEY  (id),
-            UNIQUE KEY year_direction_area (academic_year_id, direction, major_area_id),
+            KEY year_direction_area (academic_year_id, direction, major_area_id),
             KEY bus_trip (academic_year_id, direction, bus_id, trip_number),
             KEY bus_year (bus_id, academic_year_id),
             KEY area_year (major_area_id, academic_year_id),
             KEY status (status)
+        ) $cc;");
+
+        dbDelta("CREATE TABLE {$p}olama_transport_area_trip_families (
+            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            area_bus_assignment_id bigint(20) UNSIGNED NOT NULL,
+            family_uid varchar(100) NOT NULL,
+            student_count_snapshot int(10) UNSIGNED NOT NULL DEFAULT 0,
+            queue_position int(10) UNSIGNED NOT NULL DEFAULT 0,
+            created_at datetime NOT NULL,
+            updated_at datetime NOT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY trip_family (area_bus_assignment_id, family_uid),
+            KEY trip_queue (area_bus_assignment_id, queue_position),
+            KEY family_uid (family_uid)
         ) $cc;");
 
         dbDelta("CREATE TABLE {$p}olama_transport_route_versions (
@@ -353,6 +372,7 @@ class Olama_Transportation_DB
         self::normalize_core_bus_projection();
         self::allow_missing_family_coordinates();
         self::upgrade_area_assignment_schema();
+        self::upgrade_areas_workspace_schema();
         self::ensure_legacy_assignment_links();
     }
 
@@ -388,6 +408,30 @@ class Olama_Transportation_DB
                 $wpdb->query("ALTER TABLE {$table} ADD UNIQUE KEY year_direction_area (academic_year_id,direction,major_area_id)");
             }
         }
+    }
+
+    private static function upgrade_areas_workspace_schema()
+    {
+        global $wpdb;
+        $areas = self::table('major_areas');
+        $buses = self::table('buses');
+        $assignments = self::table('area_bus_assignments');
+        // dbDelta does not remove the former one-area-per-direction constraint.
+        $indexes = $wpdb->get_results("SHOW INDEX FROM {$assignments}", ARRAY_A);
+        foreach ($indexes as $index) {
+            if ($index['Key_name'] === 'year_direction_area') {
+                $wpdb->query("ALTER TABLE {$assignments} DROP INDEX year_direction_area");
+                break;
+            }
+        }
+        $columns = function ($table) use ($wpdb) { return $wpdb->get_col("SHOW COLUMNS FROM {$table}", 0); };
+        if (!in_array('area_type', $columns($areas), true)) $wpdb->query("ALTER TABLE {$areas} ADD COLUMN area_type varchar(20) NOT NULL DEFAULT 'secondary'");
+        if (!in_array('allow_multi_area', $columns($buses), true)) $wpdb->query("ALTER TABLE {$buses} ADD COLUMN allow_multi_area tinyint(1) NOT NULL DEFAULT 0");
+        if (!in_array('main_area_id', $columns($buses), true)) $wpdb->query("ALTER TABLE {$buses} ADD COLUMN main_area_id bigint(20) UNSIGNED DEFAULT NULL");
+        if (!in_array('arrival_time', $columns($assignments), true)) $wpdb->query("ALTER TABLE {$assignments} ADD COLUMN arrival_time time DEFAULT NULL");
+        if (!in_array('departure_time', $columns($assignments), true)) $wpdb->query("ALTER TABLE {$assignments} ADD COLUMN departure_time time DEFAULT NULL");
+        $indexes = $wpdb->get_col("SHOW INDEX FROM {$assignments}", 2);
+        if (!in_array('area_year_direction', $indexes, true)) $wpdb->query("ALTER TABLE {$assignments} ADD KEY area_year_direction (major_area_id,academic_year_id,direction,status)");
     }
 
     private static function normalize_core_bus_projection()

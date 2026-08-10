@@ -48,6 +48,21 @@ $translate = array('Olama_School_Helpers', 'translate');
             </div>
         <?php endif; ?>
 
+        <?php if ($active_tab === 'areas'): ?>
+            <div id="olama-areas-workspace" class="olama-card" data-year-id="<?php echo intval($selected_year_id); ?>">
+                <div class="olama-transportation-toolbar">
+                    <div><h2><?php echo esc_html($translate('Areas & Trip Allocation')); ?></h2><p class="description"><?php echo esc_html($translate('Oracle areas are read-only. Manage local transport type, color, trips and family queues here.')); ?></p></div>
+                    <button type="button" class="button" id="areas-refresh-core"><?php echo esc_html($translate('Refresh Areas from Olama Core')); ?></button>
+                </div>
+                <div class="olama-area-filters">
+                    <label><?php echo esc_html($translate('Academic Year')); ?><select id="areas-year"><?php foreach ($years as $year): ?><option value="<?php echo intval($year->id); ?>" <?php selected($selected_year_id,$year->id); ?>><?php echo esc_html($year->year_name); ?></option><?php endforeach; ?></select></label>
+                    <label><?php echo esc_html($translate('Direction')); ?><select id="areas-direction"><option value="morning"><?php echo esc_html($translate('Morning / Arrival')); ?></option><option value="afternoon"><?php echo esc_html($translate('Afternoon / Departure')); ?></option></select></label>
+                </div>
+                <div id="areas-feedback" class="olama-operation-result" aria-live="polite"></div>
+                <div class="olama-area-table-wrap"><table class="wp-list-table widefat striped olama-area-table"><thead><tr><th><?php echo esc_html($translate('Oracle Area')); ?></th><th><?php echo esc_html($translate('Students')); ?></th><th><?php echo esc_html($translate('Area Type')); ?></th><th><?php echo esc_html($translate('Color')); ?></th><th><?php echo esc_html($translate('Suggested Buses (35)')); ?></th><th><?php echo esc_html($translate('Trips & Family Queue')); ?></th><th><?php echo esc_html($translate('Add Trip')); ?></th></tr></thead><tbody id="areas-body"><tr><td colspan="7"><?php echo esc_html($translate('Loading...')); ?></td></tr></tbody></table></div>
+            </div>
+        <?php endif; ?>
+
         <?php if (false && $active_tab === 'planning'): // Deprecated polygon planner retained only in source for compatibility. ?>
             <div id="olama-geographic-planner" class="olama-card" data-year-id="<?php echo intval($selected_year_id); ?>">
                 <div class="olama-planner-header">
@@ -461,6 +476,8 @@ $translate = array('Olama_School_Helpers', 'translate');
                                 <p><label><?php echo esc_html($translate('License Expiry')); ?></label><input type="text" id="bus-license-expiry" readonly class="widefat" /></p>
                                 <p><label><?php echo esc_html($translate('Driver')); ?></label><select name="driver_user_id" id="bus-driver-id" class="widefat"><option value=""><?php echo esc_html($translate('Select Driver')); ?></option><?php foreach ($drivers as $driver): ?><option value="<?php echo intval($driver->ID); ?>"><?php echo esc_html($driver->display_name); ?></option><?php endforeach; ?></select></p>
                                 <p><label><?php echo esc_html($translate('Companion')); ?></label><select name="companion_user_id" id="bus-companion-id" class="widefat"><option value=""><?php echo esc_html($translate('Select Companion')); ?></option><?php foreach ($companions as $companion): ?><option value="<?php echo intval($companion->ID); ?>"><?php echo esc_html($companion->display_name); ?></option><?php endforeach; ?></select></p>
+                                <p><label><?php echo esc_html($translate('Main Oracle Area')); ?></label><select name="main_area_id" id="bus-main-area-id" class="widefat"><option value=""><?php echo esc_html($translate('Select Area')); ?></option><?php foreach ($areas as $area): ?><option value="<?php echo intval($area['id']); ?>"><?php echo esc_html($area['name']); ?></option><?php endforeach; ?></select></p>
+                                <p><label><input type="checkbox" name="allow_multi_area" id="bus-allow-multi-area" value="1" /> <?php echo esc_html($translate('Can serve multiple areas')); ?></label></p>
                                 <p><label><?php echo esc_html($translate('Engine Capacity')); ?></label><input type="text" id="bus-engine-capacity" readonly class="widefat" /></p>
                                 <p><label><?php echo esc_html($translate('Fuel Type')); ?></label><input type="text" id="bus-fuel-type" readonly class="widefat" /></p>
                             </div>

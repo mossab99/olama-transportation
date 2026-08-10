@@ -151,6 +151,8 @@ class Olama_Transportation_Bus
         }
         $bus_data = array(
             'planning_capacity'   => intval($data['planning_capacity'] ?? $existing_bus->passenger_capacity),
+            'allow_multi_area'    => !empty($data['allow_multi_area']) ? 1 : 0,
+            'main_area_id'        => !empty($data['main_area_id']) ? intval($data['main_area_id']) : null,
             'morning_trip_count'  => max(1, min(10, intval($data['morning_trip_count'] ?? $existing_bus->morning_trip_count ?? 2))),
             'afternoon_trip_count'=> max(1, min(10, intval($data['afternoon_trip_count'] ?? $existing_bus->afternoon_trip_count ?? 3))),
             'driver_user_id'      => !empty($data['driver_user_id']) ? intval($data['driver_user_id']) : null,
@@ -166,6 +168,19 @@ class Olama_Transportation_Bus
             return new WP_Error('invalid_capacity', $registered_capacity > 0
                 ? __('Planning capacity must be greater than zero and cannot exceed the registered Core capacity.', 'olama-transportation')
                 : __('Enter a positive local planning capacity because Core capacity is missing.', 'olama-transportation'));
+        }
+        if ($bus_data['main_area_id']) {
+            $area = $wpdb->get_var($wpdb->prepare('SELECT id FROM ' . Olama_Transportation_DB::table('major_areas') . " WHERE id=%d AND status='active'", $bus_data['main_area_id']));
+            if (!$area) return new WP_Error('invalid_main_area', __('Select an active Oracle area for this bus.', 'olama-transportation'));
+        }
+        foreach (array('driver_user_id' => self::get_available_drivers(), 'companion_user_id' => self::get_available_companions()) as $field => $eligible) {
+            if (!$bus_data[$field]) continue;
+            $ids = array_map(function ($user) { return (int) $user->ID; }, $eligible);
+            if (!in_array((int) $bus_data[$field], $ids, true)) {
+                return new WP_Error('ineligible_staff_member', $field === 'driver_user_id'
+                    ? __('Only active employees with the سائق title can be assigned as drivers.', 'olama-transportation')
+                    : __('Only active teacher employees can be assigned as support administrators.', 'olama-transportation'));
+            }
         }
 
         $before = self::get_bus($id);
@@ -189,12 +204,29 @@ class Olama_Transportation_Bus
 
     public static function get_available_drivers()
     {
-        return get_users(array('role__in' => array('administrator', 'editor', 'author', 'teacher', 'assistant')));
+        return self::eligible_employee_users('سائق');
     }
 
     public static function get_available_companions()
     {
-        return get_users(array('role__in' => array('administrator', 'editor', 'author', 'teacher', 'assistant')));
+        return self::eligible_employee_users('معلم');
+    }
+
+    private static function eligible_employee_users($title)
+    {
+        if (!function_exists('olama_core') || !method_exists(olama_core(), 'employees')) return array();
+        $users = array();
+        foreach ((array) olama_core()->employees()->active(array('limit' => 1000)) as $employee) {
+            $row = is_array($employee) ? $employee : (array) $employee;
+            $job_title = (string) ($row['job_title'] ?? '');
+            if (mb_stripos($job_title, $title, 0, 'UTF-8') === false) continue;
+            $profile = olama_core()->employees()->get_360((string) ($row['employee_id'] ?? ''));
+            foreach ((array) ($profile['accounts'] ?? array()) as $account) {
+                $user = get_user_by('id', (int) $account['user_id']);
+                if ($user) $users[$user->ID] = $user;
+            }
+        }
+        return array_values($users);
     }
 
     public static function assign_students_to_bus($bus_id, $student_ids, $academic_year_id)

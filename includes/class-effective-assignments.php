@@ -32,7 +32,7 @@ class Olama_Transportation_Effective_Assignments
         $allocation_table = Olama_Transportation_DB::table('area_bus_assignments');
         $buses_table = Olama_Transportation_DB::table('buses');
         $areas = $wpdb->get_results(
-            "SELECT id,name,code,color,boundary_geojson,status FROM {$areas_table} WHERE status='active' ORDER BY name",
+            "SELECT id,name,code,color,area_type,boundary_geojson,status FROM {$areas_table} WHERE status='active' ORDER BY name",
             ARRAY_A
         );
         $area_index = array();

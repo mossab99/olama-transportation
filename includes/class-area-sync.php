@@ -60,7 +60,7 @@ class Olama_Transportation_Area_Sync
                     $wpdb->insert($areas, array(
                         'name' => $name,
                         'code' => $code,
-                        'color' => self::stable_color($oracle_id),
+                        'color' => self::next_color($areas, $oracle_id),
                         'status' => 'active',
                         'created_by' => get_current_user_id() ?: null,
                         'created_at' => $now,
@@ -258,5 +258,14 @@ class Olama_Transportation_Area_Sync
     {
         $palette = array('#2563eb', '#059669', '#d97706', '#7c3aed', '#db2777', '#0891b2', '#65a30d', '#dc2626');
         return $palette[abs(crc32((string) $value)) % count($palette)];
+    }
+
+    private static function next_color($areas, $seed)
+    {
+        global $wpdb;
+        $used = $wpdb->get_col("SELECT color FROM {$areas} WHERE status='active'");
+        $palette = array('#2563eb', '#059669', '#d97706', '#7c3aed', '#db2777', '#0891b2', '#65a30d', '#dc2626', '#0f766e', '#a16207');
+        foreach ($palette as $color) if (!in_array($color, $used, true)) return $color;
+        return self::stable_color($seed);
     }
 }

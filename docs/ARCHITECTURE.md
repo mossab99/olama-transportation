@@ -15,6 +15,8 @@ Oracle ERP (read only)
 
 ## Active planning boundary
 
+The **Areas** workspace is the operational planning surface. It shows active Oracle areas with current direction-specific demand, keeps local main/secondary and unique-color settings, creates multiple timed trips per area, and assigns complete families to one trip queue at a time. Queue generation intentionally randomizes unallocated families only and never splits a family. A bus is restricted to one area per academic-year/direction unless its local `allow_multi_area` override is enabled. Area Planning remains the later visual-review surface.
+
 `Olama_Transportation_Family_Area_Assignments` owns manual classification of `family_stops.major_area_id`. Single and bulk changes accept stable Core family UIDs and create a location-less placeholder when no family-stop row exists. Latitude/longitude remain nullable until captured. Changes preserve coordinates and unrelated fields, set manual audit metadata, never update students, and return the resulting effective allocation. Bulk changes validate all families before beginning a transaction and lock all selected stop rows before updating.
 
 `Olama_Transportation_Area_Trip_Assignments` owns the unique academic-year + direction + area allocation. It validates active areas, active buses, effective capacity, and morning/afternoon trip range. Several areas can share a bus trip. Save locks the relevant area/assignment row, selected bus row, and competing trip rows, then recalculates area demand and aggregate trip demand before persistence. Browser counts are ignored. Deletion is non-destructive (`status=inactive`).

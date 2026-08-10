@@ -59,6 +59,7 @@ class Olama_Transportation_Admin
             'overview'    => Olama_School_Helpers::translate('Overview'),
             'buses'       => Olama_School_Helpers::translate('Buses'),
             'assignments' => Olama_School_Helpers::translate('Student Assignments'),
+            'areas'       => Olama_School_Helpers::translate('Areas'),
             'planning'    => Olama_School_Helpers::translate('Area Planning'),
             'routes'      => Olama_School_Helpers::translate('Routes'),
             'import'      => Olama_School_Helpers::translate('Family Locations'),
@@ -89,10 +90,11 @@ class Olama_Transportation_Admin
         if ($active_tab === 'buses') {
             $drivers = Olama_Transportation_Bus::get_available_drivers();
             $companions = Olama_Transportation_Bus::get_available_companions();
+            $areas = Olama_Transportation_Repository::list_items('areas', array('per_page' => 500, 'status' => 'active'));
         } elseif ($active_tab === 'assignments') {
             $selected_bus_id = isset($_GET['bus_id']) ? intval($_GET['bus_id']) : 0;
         }
-        if (in_array($active_tab, array('overview', 'planning', 'import'), true) && $selected_year_id) {
+        if (in_array($active_tab, array('overview', 'areas', 'planning', 'import'), true) && $selected_year_id) {
             $summary = Olama_Transportation_Planning::report_summary($selected_year_id);
             $areas = Olama_Transportation_Repository::list_items('areas', array('per_page' => 500));
             $family_stops = Olama_Transportation_Repository::list_items('family-stops', array('per_page' => 100));
@@ -238,6 +240,10 @@ class Olama_Transportation_Admin
                     'networkError'=>Olama_School_Helpers::translate('The request failed. Check the connection and try again.'),
                 ),
             ));
+        }
+        if ($tab === 'areas') {
+            $script_path = OLAMA_TRANSPORTATION_PATH . 'assets/js/areas-workspace.js';
+            wp_enqueue_script('olama-areas-workspace', OLAMA_TRANSPORTATION_URL . 'assets/js/areas-workspace.js', array('jquery'), $this->asset_version($script_path), true);
         }
     }
 

@@ -51,6 +51,21 @@ class Olama_Transportation_REST
         register_rest_route(self::NS, '/planning/map-data', array(
             'methods' => WP_REST_Server::READABLE, 'callback' => array($this, 'planning_map_data'), 'permission_callback' => array($this, 'can_view'),
         ));
+        register_rest_route(self::NS, '/areas-workspace', array(
+            array('methods'=>WP_REST_Server::READABLE,'callback'=>array($this,'areas_workspace'),'permission_callback'=>array($this,'can_view')),
+        ));
+        register_rest_route(self::NS, '/areas-workspace/(?P<id>\d+)', array(
+            array('methods'=>WP_REST_Server::EDITABLE,'callback'=>array($this,'update_workspace_area'),'permission_callback'=>array($this,'can_manage')),
+        ));
+        register_rest_route(self::NS, '/areas-workspace/trips', array(
+            array('methods'=>WP_REST_Server::CREATABLE,'callback'=>array($this,'create_workspace_trip'),'permission_callback'=>array($this,'can_manage')),
+        ));
+        register_rest_route(self::NS, '/areas-workspace/trips/(?P<id>\d+)/generate-queue', array(
+            array('methods'=>WP_REST_Server::CREATABLE,'callback'=>array($this,'generate_workspace_queue'),'permission_callback'=>array($this,'can_manage')),
+        ));
+        register_rest_route(self::NS, '/areas-workspace/trips/(?P<id>\d+)/queue', array(
+            array('methods'=>WP_REST_Server::READABLE,'callback'=>array($this,'workspace_queue'),'permission_callback'=>array($this,'can_view')),
+        ));
         register_rest_route(self::NS, '/planning/area-allocations', array(
             array('methods' => WP_REST_Server::READABLE, 'callback' => array($this, 'area_allocations'), 'permission_callback' => array($this, 'can_view')),
             array('methods' => WP_REST_Server::CREATABLE, 'callback' => array($this, 'save_area_allocation'), 'permission_callback' => array($this, 'can_manage')),
@@ -230,6 +245,12 @@ class Olama_Transportation_REST
             $request->get_params()
         ));
     }
+
+    public function areas_workspace(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Areas_Workspace::overview($request->get_param('academic_year_id'), $request->get_param('direction') ?: 'morning')); }
+    public function update_workspace_area(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Areas_Workspace::update_area($request['id'], $request->get_json_params() ?: $request->get_params())); }
+    public function create_workspace_trip(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Areas_Workspace::create_trip($request->get_json_params() ?: $request->get_params())); }
+    public function generate_workspace_queue(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Areas_Workspace::generate_queue($request['id'])); }
+    public function workspace_queue(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Areas_Workspace::queue($request['id'])); }
 
     public function area_allocations(WP_REST_Request $request)
     {

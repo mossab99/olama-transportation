@@ -9,7 +9,7 @@ class Olama_Transportation_Repository
     private static $entities = array(
         'areas' => array(
             'table' => 'major_areas',
-            'fields' => array('name', 'code', 'color', 'boundary_geojson', 'notes', 'status'),
+            'fields' => array('name', 'code', 'color', 'area_type', 'boundary_geojson', 'notes', 'status'),
             'required' => array('name', 'code'),
         ),
         'stops' => array(
