@@ -67,6 +67,9 @@ class Olama_Transportation_Bus
                 'driver_license_number' => sanitize_text_field((string) ($row['driver_license_number'] ?? $row['plate_number'] ?? '')) ?: null,
                 'chassis_number' => sanitize_text_field((string) ($row['chassis_number'] ?? '')),
                 'passenger_capacity' => $registered_capacity,
+                // Olama Core owns the bus capacity. Keep the local planning projection in sync
+                // so prior local overrides cannot make trip capacity disagree with Core.
+                'planning_capacity' => $registered_capacity,
                 'driver_employee_id' => sanitize_text_field((string) ($row['driver_employee_id'] ?? '')),
                 'driver_source_name' => sanitize_text_field((string) ($row['driver_employee_name'] ?? '')),
                 'companion_employee_id' => sanitize_text_field((string) ($row['companion_employee_id'] ?? '')),
@@ -86,7 +89,6 @@ class Olama_Transportation_Bus
                 $wpdb->update($table, $master, array('id' => intval($existing['id'])));
                 $summary['updated']++;
             } else {
-                $master['planning_capacity'] = $registered_capacity;
                 $master['created_at'] = current_time('mysql', true);
                 $wpdb->insert($table, $master);
                 $summary['created']++;
