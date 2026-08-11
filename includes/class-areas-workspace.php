@@ -58,7 +58,8 @@ class Olama_Transportation_Areas_Workspace
         $direction=sanitize_key($data['direction']??''); $number=absint($data['trip_number']??0);
         if (!$year || !$area || !$bus || !$number || !in_array($direction,array('morning','afternoon'),true)) return new WP_Error('invalid_trip', __('Academic year, area, direction, bus and trip number are required.', 'olama-transportation'), array('status'=>400));
         $bus_row = $wpdb->get_row($wpdb->prepare('SELECT * FROM '.Olama_Transportation_DB::table('buses').' WHERE id=%d AND status=%s',$bus,'active'), ARRAY_A);
-        if (!$bus_row || $number > (int)$bus_row[$direction.'_trip_count']) return new WP_Error('invalid_bus_trip', __('The selected active bus does not provide this trip number.', 'olama-transportation'), array('status'=>400));
+        $capacity = $bus_row ? ((int)$bus_row['planning_capacity'] > 0 ? (int)$bus_row['planning_capacity'] : (int)$bus_row['passenger_capacity']) : 0;
+        if (!$bus_row || $capacity < 1 || $number > (int)$bus_row[$direction.'_trip_count']) return new WP_Error('invalid_bus_trip', __('The selected active bus does not provide this trip number or has no usable capacity.', 'olama-transportation'), array('status'=>400));
         $assignments=Olama_Transportation_DB::table('area_bus_assignments');
         if (empty($bus_row['allow_multi_area'])) {
             $other=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$assignments} WHERE academic_year_id=%d AND direction=%s AND bus_id=%d AND major_area_id<>%d AND status='active'",$year,$direction,$bus,$area));
@@ -101,6 +102,19 @@ class Olama_Transportation_Areas_Workspace
         return array('label'=>$assignment['area_name'].' - '.($assignment['direction']==='morning' ? __('Arrival','olama-transportation') : __('Departure','olama-transportation')).' - '.__('Trip','olama-transportation').' '.$assignment['trip_number'], 'families'=>$links);
     }
 
-    private static function available_buses(){ global $wpdb; return $wpdb->get_results('SELECT id,bus_number,passenger_capacity,planning_capacity,allow_multi_area,main_area_id,morning_trip_count,afternoon_trip_count FROM '.Olama_Transportation_DB::table('buses')." WHERE status='active' ORDER BY bus_number",ARRAY_A); }
+    private static function available_buses(){
+        global $wpdb;
+        $rows = $wpdb->get_results('SELECT id,bus_number,passenger_capacity,planning_capacity,allow_multi_area,main_area_id,morning_trip_count,afternoon_trip_count FROM '.Olama_Transportation_DB::table('buses')." WHERE status='active' ORDER BY bus_number", ARRAY_A);
+        $buses = array();
+        foreach ($rows as $bus) {
+            $bus['passenger_capacity'] = (int) $bus['passenger_capacity'];
+            $bus['planning_capacity'] = (int) $bus['planning_capacity'];
+            $bus['effective_capacity'] = $bus['planning_capacity'] > 0 ? $bus['planning_capacity'] : $bus['passenger_capacity'];
+            if ($bus['effective_capacity'] > 0) {
+                $buses[] = $bus;
+            }
+        }
+        return $buses;
+    }
     private static function time($value){ $value=sanitize_text_field($value); return preg_match('/^([01]\\d|2[0-3]):[0-5]\\d$/',$value)?$value.':00':null; }
 }

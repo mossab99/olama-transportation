@@ -9,7 +9,7 @@
     function esc(value) { return $('<div>').text(value == null ? '' : value).html(); }
     function feedback(message, error) { $('#areas-feedback').text(message || '').toggleClass('is-error', !!error).toggleClass('is-success', !error && !!message); }
     function buses(direction) {
-        return data.buses.map(function (b) { var cap = Number(b.planning_capacity || b.passenger_capacity || 0); return '<option value="' + b.id + '">' + esc(b.bus_number) + ' (' + cap + ', ' + (direction === 'morning' ? b.morning_trip_count : b.afternoon_trip_count) + ' trips)</option>'; }).join('');
+        return data.buses.map(function (b) { var cap = Number(b.effective_capacity || 0); return '<option value="' + b.id + '">' + esc(b.bus_number) + ' (' + cap + ', ' + (direction === 'morning' ? b.morning_trip_count : b.afternoon_trip_count) + ' trips)</option>'; }).join('');
     }
     function tripHtml(trip) {
         var time = [trip.arrival_time && 'Arrival ' + trip.arrival_time.slice(0, 5), trip.departure_time && 'Departure ' + trip.departure_time.slice(0, 5)].filter(Boolean).join(' · ');
