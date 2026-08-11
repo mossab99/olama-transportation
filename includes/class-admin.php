@@ -60,7 +60,7 @@ class Olama_Transportation_Admin
             'buses'       => Olama_School_Helpers::translate('Buses'),
             'assignments' => Olama_School_Helpers::translate('Student Assignments'),
             'areas'       => Olama_School_Helpers::translate('Areas'),
-            'planning'    => Olama_School_Helpers::translate('Area Planning'),
+            'planning'    => Olama_School_Helpers::translate('Area Mapping'),
             'routes'      => Olama_School_Helpers::translate('Routes'),
             'import'      => Olama_School_Helpers::translate('Family Locations'),
             'settings'    => Olama_School_Helpers::translate('Settings'),
@@ -154,8 +154,8 @@ class Olama_Transportation_Admin
             $this->enqueue_style('olama-leaflet', 'assets/vendor/leaflet/leaflet.css');
             $this->enqueue_style('olama-geographic-planner', 'assets/css/geographic-planner.css', array('olama-leaflet'));
             wp_enqueue_script('olama-leaflet', OLAMA_TRANSPORTATION_URL . 'assets/vendor/leaflet/leaflet.js', array(), $this->asset_version(OLAMA_TRANSPORTATION_PATH . 'assets/vendor/leaflet/leaflet.js'), true);
-            wp_enqueue_script('olama-geographic-planner', OLAMA_TRANSPORTATION_URL . 'assets/js/geographic-planner.js', array('olama-leaflet'), $this->asset_version(OLAMA_TRANSPORTATION_PATH . 'assets/js/geographic-planner.js'), true);
-            wp_localize_script('olama-geographic-planner', 'olamaPlanner', array(
+            wp_enqueue_script('olama-area-mapping', OLAMA_TRANSPORTATION_URL . 'assets/js/area-mapping.js', array('olama-leaflet'), $this->asset_version(OLAMA_TRANSPORTATION_PATH . 'assets/js/area-mapping.js'), true);
+            wp_localize_script('olama-area-mapping', 'olamaPlanner', array(
                 'restUrl' => esc_url_raw(rest_url('olama-transportation/v1/')),
                 'restNonce' => wp_create_nonce('wp_rest'),
                 'canManage' => Olama_School_Permissions::can('olama_manage_transport_buses'),
