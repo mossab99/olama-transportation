@@ -28,7 +28,6 @@ class Olama_Transportation_Areas_Workspace
         }
         foreach ($resolved['areas'] as &$area) {
             $area['area_type'] = in_array($area['area_type'] ?? '', array('main','secondary'), true) ? $area['area_type'] : 'secondary';
-            $area['suggested_buses'] = (int)ceil((int)$area['student_count'] / 35);
             $area['trips'] = $by_area[(int)$area['id']] ?? array();
         }
         return array('areas'=>$resolved['areas'], 'buses'=>self::available_buses(), 'demand_mode'=>$resolved['demand_mode'], 'warning'=>$resolved['warning']);
