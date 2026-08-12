@@ -471,16 +471,36 @@ class Olama_Transportation_DB
                 student_uid varchar(100) DEFAULT NULL,
                 bus_id bigint(20) UNSIGNED NOT NULL,
                 academic_year_id bigint(20) UNSIGNED NOT NULL,
+                direction varchar(20) NOT NULL DEFAULT 'morning',
+                trip_number tinyint(3) UNSIGNED NOT NULL DEFAULT 1,
                 pickup_location varchar(255) DEFAULT NULL,
                 dropoff_location varchar(255) DEFAULT NULL,
                 notes text DEFAULT NULL,
                 assigned_at datetime NOT NULL,
                 assigned_by bigint(20) UNSIGNED NOT NULL,
                 PRIMARY KEY  (id),
-                UNIQUE KEY student_uid_year (student_uid, academic_year_id),
-                KEY bus_id (bus_id)
+                UNIQUE KEY student_year_direction (student_uid, academic_year_id, direction),
+                KEY bus_trip (bus_id, academic_year_id, direction, trip_number)
             ) {$wpdb->get_charset_collate()};");
-            return;
+        }
+
+        $columns = $wpdb->get_col("SHOW COLUMNS FROM {$table}", 0);
+        if (!in_array('direction', $columns, true)) {
+            $wpdb->query("ALTER TABLE {$table} ADD direction varchar(20) NOT NULL DEFAULT 'morning' AFTER academic_year_id");
+        }
+        if (!in_array('trip_number', $columns, true)) {
+            $wpdb->query("ALTER TABLE {$table} ADD trip_number tinyint(3) UNSIGNED NOT NULL DEFAULT 1 AFTER direction");
+        }
+        $indexes = $wpdb->get_results("SHOW INDEX FROM {$table}", ARRAY_A);
+        $index_names = array_unique(wp_list_pluck($indexes, 'Key_name'));
+        if (in_array('student_uid_year', $index_names, true)) {
+            $wpdb->query("ALTER TABLE {$table} DROP INDEX student_uid_year");
+        }
+        if (!in_array('student_year_direction', $index_names, true)) {
+            $wpdb->query("ALTER TABLE {$table} ADD UNIQUE KEY student_year_direction (student_uid, academic_year_id, direction)");
+        }
+        if (!in_array('bus_trip', $index_names, true)) {
+            $wpdb->query("ALTER TABLE {$table} ADD KEY bus_trip (bus_id, academic_year_id, direction, trip_number)");
         }
 
         $students_table = olama_core()->read_models()->table('students');

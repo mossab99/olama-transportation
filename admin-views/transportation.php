@@ -470,37 +470,36 @@ $translate = array('Olama_School_Helpers', 'translate');
         <?php if ($active_tab === 'assignments'): ?>
             <div class="olama-card">
                 <h2><?php echo esc_html($translate('Student Assignments')); ?></h2>
-                <p class="notice notice-info inline"><?php echo esc_html($translate('This screen uses the legacy annual student-to-bus assignment model. Geographic groups are maintained separately by direction and trip.')); ?></p>
+                <p class="notice notice-info inline"><?php echo esc_html($translate('Define bus trips first. Then select a bus and trip to choose students from its attached areas.')); ?></p>
                 <div class="olama-form-grid">
                     <p><label><?php echo esc_html($translate('Academic Year')); ?></label><select id="assignment-year-filter" class="widefat"><?php foreach ($years as $year): ?><option value="<?php echo intval($year->id); ?>" <?php selected($selected_year_id, $year->id); ?>><?php echo esc_html($year->year_name); ?></option><?php endforeach; ?></select></p>
                     <p><label><?php echo esc_html($translate('Select Bus')); ?></label><select id="assignment-bus-filter" class="widefat"><option value=""><?php echo esc_html($translate('Select a bus')); ?></option><?php foreach ($buses as $bus): ?><option value="<?php echo intval($bus->id); ?>" <?php selected($selected_bus_id, $bus->id); ?>><?php echo esc_html($bus->bus_number . ' - ' . ($bus->government_number ?: $translate('No bus number'))); ?></option><?php endforeach; ?></select></p>
+                    <p><label><?php echo esc_html($translate('Trip #')); ?></label><select id="assignment-trip-filter" class="widefat" disabled><option value=""><?php echo esc_html($translate('Select bus first')); ?></option></select></p>
                 </div>
 
                 <div id="assignment-content" class="olama-assignment-content">
+                    <div class="olama-transportation-toolbar">
+                        <div><strong><?php echo esc_html($translate('Attached Areas')); ?>:</strong> <span id="assignment-area-list">—</span></div>
+                        <div><select id="assignment-attach-area"><option value=""><?php echo esc_html($translate('Attach another area')); ?></option></select> <button type="button" class="button" id="assignment-attach-area-btn" disabled><?php echo esc_html($translate('Attach Area')); ?></button></div>
+                    </div>
                     <div id="capacity-info" class="olama-capacity-info">
                         <strong><?php echo esc_html($translate('Capacity')); ?>:</strong> <span id="capacity-text">0/0</span>
                         <div class="olama-capacity-track"><div id="capacity-bar"></div></div>
                     </div>
 
-                    <h3><?php echo esc_html($translate('Assigned Students')); ?></h3>
-                    <table class="wp-list-table widefat fixed striped">
-                        <thead><tr><th><?php echo esc_html($translate('Student Name')); ?></th><th><?php echo esc_html($translate('Student ID')); ?></th><th><?php echo esc_html($translate('Grade')); ?></th><th><?php echo esc_html($translate('Section')); ?></th><th><?php echo esc_html($translate('Actions')); ?></th></tr></thead>
-                        <tbody id="assigned-students-body"><tr><td colspan="5"><?php echo esc_html($translate('Loading...')); ?></td></tr></tbody>
-                    </table>
-
                     <div class="olama-transportation-toolbar">
-                        <h3><?php echo esc_html($translate('Unassigned Students')); ?></h3>
-                        <button type="button" class="button button-primary" id="assign-selected-btn" disabled><?php echo esc_html($translate('Assign Selected')); ?></button>
+                        <h3><?php echo esc_html($translate('Students in Attached Areas')); ?></h3>
+                        <button type="button" class="button button-primary" id="assign-selected-btn"><?php echo esc_html($translate('Save Student Selection')); ?></button>
                     </div>
                     <table class="wp-list-table widefat fixed striped">
-                        <thead><tr><th><input type="checkbox" id="select-all-students" /></th><th><?php echo esc_html($translate('Student Name')); ?></th><th><?php echo esc_html($translate('Student ID')); ?></th><th><?php echo esc_html($translate('Grade')); ?></th><th><?php echo esc_html($translate('Section')); ?></th></tr></thead>
-                        <tbody id="unassigned-students-body"><tr><td colspan="5"><?php echo esc_html($translate('Loading...')); ?></td></tr></tbody>
+                        <thead><tr><th><input type="checkbox" id="select-all-students" /></th><th><?php echo esc_html($translate('Student Name')); ?></th><th><?php echo esc_html($translate('Student ID')); ?></th><th><?php echo esc_html($translate('Area')); ?></th><th><?php echo esc_html($translate('Grade')); ?></th><th><?php echo esc_html($translate('Section')); ?></th></tr></thead>
+                        <tbody id="unassigned-students-body"><tr><td colspan="6"><?php echo esc_html($translate('Loading...')); ?></td></tr></tbody>
                     </table>
                 </div>
 
                 <div id="no-bus-selected" class="olama-empty-state">
                     <span class="dashicons dashicons-car"></span>
-                    <p><?php echo esc_html($translate('Please select a bus to manage student assignments')); ?></p>
+                    <p><?php echo esc_html($translate('Select a bus and a defined trip to manage student assignments')); ?></p>
                 </div>
             </div>
         <?php endif; ?>

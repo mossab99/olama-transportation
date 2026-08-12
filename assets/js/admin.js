@@ -121,58 +121,42 @@
             return;
         }
 
-        var currentBusId = 0;
-        var currentYearId = 0;
+        var context = {};
+
+        function selectedTrip() {
+            var value = $('#assignment-trip-filter').val().split(':');
+            return value.length === 2 ? {direction: value[0], trip_number: value[1]} : null;
+        }
+
+        function loadTrips() {
+            var busId = $('#assignment-bus-filter').val(), yearId = $('#assignment-year-filter').val(), $trip = $('#assignment-trip-filter');
+            $('#assignment-content').hide(); $('#no-bus-selected').show();
+            $trip.empty().prop('disabled', true).append($('<option>').val('').text(t('selectTrip')));
+            if (!busId || !yearId) return;
+            $.get(ajaxurl, {action:'olama_get_assignment_trips',bus_id:busId,academic_year_id:yearId,nonce:nonce()}).done(function(response){
+                if (!response.success) return alert(response.data);
+                (response.data || []).forEach(function(item){
+                    var direction = t(item.direction) || item.direction;
+                    $('<option>').val(item.direction + ':' + item.trip_number).text(direction + ' - ' + t('trip') + ' ' + item.trip_number + ' - ' + item.area_names).appendTo($trip);
+                });
+                if (!response.data.length) $('<option>').val('').text(t('noDefinedTrips')).appendTo($trip);
+                $trip.prop('disabled', !response.data.length);
+            });
+        }
 
         function loadBusAssignments() {
-            var busId = $('#assignment-bus-filter').val();
-            var yearId = $('#assignment-year-filter').val();
-
-            if (!busId) {
-                $('#assignment-content').hide();
-                $('#no-bus-selected').show();
-                return;
-            }
-
-            currentBusId = busId;
-            currentYearId = yearId;
-            $('#no-bus-selected').hide();
-            $('#assignment-content').show();
-
-            $.ajax({
-                url: ajaxurl,
-                type: 'GET',
-                data: {
-                    action: 'olama_get_bus_students',
-                    bus_id: busId,
-                    academic_year_id: yearId,
-                    nonce: nonce()
-                },
-                success: function (response) {
-                    if (response.success) {
-                        updateCapacityInfo(response.data.capacity);
-                        renderAssignedStudents(response.data.students);
-                    } else {
-                        alert(response.data);
-                    }
-                }
-            });
-
-            $.ajax({
-                url: ajaxurl,
-                type: 'GET',
-                data: {
-                    action: 'olama_get_unassigned_students',
-                    academic_year_id: yearId,
-                    nonce: nonce()
-                },
-                success: function (response) {
-                    if (response.success) {
-                        renderUnassignedStudents(response.data.students || response.data);
-                    } else {
-                        alert(response.data);
-                    }
-                }
+            var trip = selectedTrip();
+            if (!trip) { $('#assignment-content').hide(); $('#no-bus-selected').show(); return; }
+            context = {bus_id:$('#assignment-bus-filter').val(),academic_year_id:$('#assignment-year-filter').val(),direction:trip.direction,trip_number:trip.trip_number};
+            $('#no-bus-selected').hide(); $('#assignment-content').show();
+            $.get(ajaxurl, $.extend({action:'olama_get_trip_area_students',nonce:nonce()}, context)).done(function(response){
+                if (!response.success) return alert(response.data);
+                updateCapacityInfo(response.data.capacity);
+                renderUnassignedStudents(response.data.students || []);
+                $('#assignment-area-list').text((response.data.areas || []).map(function(area){return area.name;}).join(', ') || '-');
+                var $areas=$('#assignment-attach-area').empty().append($('<option>').val('').text(t('attachAnotherArea')));
+                (response.data.available_areas || []).forEach(function(area){$('<option>').val(area.id).text(area.name).appendTo($areas);});
+                $('#assignment-attach-area-btn').prop('disabled', !response.data.available_areas.length);
             });
         }
 
@@ -190,47 +174,33 @@
             }
         }
 
-        function renderAssignedStudents(students) {
-            var $tbody = $('#assigned-students-body').empty();
-            if (!students.length) {
-                $tbody.append('<tr><td colspan="5">' + t('noStudentsAssigned') + '</td></tr>');
-                return;
-            }
-
-            students.forEach(function (student) {
-                $('<tr>')
-                    .append($('<td>').text(student.student_name || ''))
-                    .append($('<td>').text(student.student_uid || ''))
-                    .append($('<td>').text(student.grade_name || ''))
-                    .append($('<td>').text(student.section_name || ''))
-                    .append($('<td>').append($('<button class="button button-small unassign-btn" type="button">').attr('data-student-id', student.id).text(t('unassign'))))
-                    .appendTo($tbody);
-            });
-        }
-
         function renderUnassignedStudents(students) {
             var $tbody = $('#unassigned-students-body').empty();
             if (!students.length) {
-                $tbody.append('<tr><td colspan="5">' + t('allStudentsAssigned') + '</td></tr>');
+                $tbody.append('<tr><td colspan="6">' + t('noAreaStudents') + '</td></tr>');
                 return;
             }
 
             students.forEach(function (student) {
                 $('<tr>')
-                    .append($('<td>').append($('<input type="checkbox" class="student-checkbox" />').val(student.id)))
+                    .append($('<td>').append($('<input type="checkbox" class="student-checkbox" />').val(student.id).prop('checked', !!student.selected)))
                     .append($('<td>').text(student.student_name || ''))
                     .append($('<td>').text(student.student_uid || ''))
+                    .append($('<td>').text(student.area_name || ''))
                     .append($('<td>').text(student.grade_name || ''))
                     .append($('<td>').text(student.section_name || ''))
                     .appendTo($tbody);
             });
+            $('#select-all-students').prop('checked', students.length > 0 && students.every(function(student){return !!student.selected;}));
+            updateAssignButton();
         }
 
         function updateAssignButton() {
-            $('#assign-selected-btn').prop('disabled', $('.student-checkbox:checked').length === 0);
+            $('#assign-selected-btn').prop('disabled', !selectedTrip());
         }
 
-        $('#assignment-bus-filter, #assignment-year-filter').on('change', loadBusAssignments);
+        $('#assignment-bus-filter, #assignment-year-filter').on('change', loadTrips);
+        $('#assignment-trip-filter').on('change', loadBusAssignments);
         $('#select-all-students').on('change', function () {
             $('.student-checkbox').prop('checked', $(this).prop('checked'));
             updateAssignButton();
@@ -242,18 +212,18 @@
                 return $(this).val();
             }).get();
 
-            if (!studentIds.length || !confirm(t('assignSelectedConfirm'))) {
-                return;
-            }
+            if (!confirm(t('saveSelectionConfirm'))) return;
 
             $.ajax({
                 url: ajaxurl,
                 type: 'POST',
                 data: {
-                    action: 'olama_assign_students_to_bus',
-                    bus_id: currentBusId,
+                    action: 'olama_sync_trip_students',
+                    bus_id: context.bus_id,
                     student_ids: studentIds,
-                    academic_year_id: currentYearId,
+                    academic_year_id: context.academic_year_id,
+                    direction: context.direction,
+                    trip_number: context.trip_number,
                     nonce: nonce()
                 },
                 success: function (response) {
@@ -267,23 +237,15 @@
             });
         });
 
-        $(document).on('click', '.unassign-btn', function () {
-            if (!confirm(t('unassignStudentConfirm'))) {
-                return;
-            }
-
+        $('#assignment-attach-area-btn').on('click', function () {
+            var areaId=$('#assignment-attach-area').val(); if(!areaId) return;
             $.ajax({
                 url: ajaxurl,
                 type: 'POST',
-                data: {
-                    action: 'olama_unassign_student_from_bus',
-                    student_id: $(this).data('student-id'),
-                    academic_year_id: currentYearId,
-                    nonce: nonce()
-                },
+                data: $.extend({action:'olama_attach_trip_area',major_area_id:areaId,nonce:nonce()},context),
                 success: function (response) {
                     if (response.success) {
-                        alert(response.data);
+                        alert(response.data.message);
                         loadBusAssignments();
                     } else {
                         alert(response.data);
@@ -292,7 +254,7 @@
             });
         });
 
-        loadBusAssignments();
+        loadTrips();
     }
 
     function rest(path, options) {

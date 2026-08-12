@@ -10,7 +10,7 @@ The active relationship is:
 
 `wp_olama_transport_family_stops.major_area_id` is the family-level classification. Every student in the family inherits that planning area. `wp_olama_transport_area_bus_assignments` allocates an area independently for each academic year and direction. Morning and afternoon can use different buses and trip numbers. Changing a family area changes its effective assignment immediately; no student assignment row is updated.
 
-The legacy `wp_olama_student_bus_assignments` table remains the separate annual student-assignment workflow and is never written by area planning.
+`wp_olama_student_bus_assignments` is the operator-controlled student selection layer. Assignments are scoped by academic year, direction, bus, and trip. The assignment screen derives eligible students from the areas attached to an already-defined bus trip; area planning itself does not automatically select students.
 
 ## Planning workflow
 

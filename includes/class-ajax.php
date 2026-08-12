@@ -16,6 +16,10 @@ class Olama_Transportation_Ajax
         add_action('wp_ajax_olama_unassign_student_from_bus', array($this, 'unassign_student_from_bus'));
         add_action('wp_ajax_olama_get_bus_students', array($this, 'get_bus_students'));
         add_action('wp_ajax_olama_get_unassigned_students', array($this, 'get_unassigned_students'));
+        add_action('wp_ajax_olama_get_assignment_trips', array($this, 'get_assignment_trips'));
+        add_action('wp_ajax_olama_get_trip_area_students', array($this, 'get_trip_area_students'));
+        add_action('wp_ajax_olama_sync_trip_students', array($this, 'sync_trip_students'));
+        add_action('wp_ajax_olama_attach_trip_area', array($this, 'attach_trip_area'));
     }
 
     public function save_bus()
@@ -176,6 +180,65 @@ class Olama_Transportation_Ajax
                 'academic_year_id' => $academic_year_id,
             ),
         ));
+    }
+
+    public function get_assignment_trips()
+    {
+        check_ajax_referer('olama_admin_nonce', 'nonce');
+        $this->require_capability('olama_access_transport_mgmt');
+        $bus_id = isset($_GET['bus_id']) ? absint($_GET['bus_id']) : 0;
+        $year_id = isset($_GET['academic_year_id']) ? absint($_GET['academic_year_id']) : 0;
+        if (!$bus_id || !$year_id) wp_send_json_error(__('Select an academic year and bus first.', 'olama-transportation'));
+        wp_send_json_success(Olama_Transportation_Bus::get_assignment_trips($bus_id, $year_id));
+    }
+
+    public function get_trip_area_students()
+    {
+        check_ajax_referer('olama_admin_nonce', 'nonce');
+        $this->require_capability('olama_access_transport_mgmt');
+        $context = $this->trip_context($_GET);
+        if (is_wp_error($context)) wp_send_json_error($context->get_error_message());
+        $result = Olama_Transportation_Bus::get_trip_area_students($context['bus_id'], $context['academic_year_id'], $context['direction'], $context['trip_number']);
+        if (is_wp_error($result)) wp_send_json_error($result->get_error_message());
+        wp_send_json_success($result);
+    }
+
+    public function sync_trip_students()
+    {
+        check_ajax_referer('olama_admin_nonce', 'nonce');
+        $this->require_capability('olama_manage_transport_buses');
+        $context = $this->trip_context($_POST);
+        if (is_wp_error($context)) wp_send_json_error($context->get_error_message());
+        $student_ids = isset($_POST['student_ids']) ? array_map('absint', (array) $_POST['student_ids']) : array();
+        $result = Olama_Transportation_Bus::sync_trip_students($context['bus_id'], $context['academic_year_id'], $context['direction'], $context['trip_number'], $student_ids);
+        if (is_wp_error($result)) wp_send_json_error($result->get_error_message());
+        wp_send_json_success(array('message' => __('Student selections saved.', 'olama-transportation'), 'result' => $result));
+    }
+
+    public function attach_trip_area()
+    {
+        check_ajax_referer('olama_admin_nonce', 'nonce');
+        $this->require_capability('olama_manage_transport_buses');
+        $context = $this->trip_context($_POST);
+        if (is_wp_error($context)) wp_send_json_error($context->get_error_message());
+        $context['major_area_id'] = isset($_POST['major_area_id']) ? absint($_POST['major_area_id']) : 0;
+        $result = Olama_Transportation_Bus::attach_area_to_trip($context['bus_id'], $context['academic_year_id'], $context['direction'], $context['trip_number'], $context['major_area_id']);
+        if (is_wp_error($result)) wp_send_json_error($result->get_error_message());
+        wp_send_json_success(array('message' => __('Area attached to the bus trip.', 'olama-transportation')));
+    }
+
+    private function trip_context($input)
+    {
+        $context = array(
+            'bus_id' => isset($input['bus_id']) ? absint($input['bus_id']) : 0,
+            'academic_year_id' => isset($input['academic_year_id']) ? absint($input['academic_year_id']) : 0,
+            'direction' => isset($input['direction']) ? sanitize_key($input['direction']) : '',
+            'trip_number' => isset($input['trip_number']) ? absint($input['trip_number']) : 0,
+        );
+        if (!$context['bus_id'] || !$context['academic_year_id'] || !$context['trip_number'] || !in_array($context['direction'], array('morning', 'afternoon'), true)) {
+            return new WP_Error('invalid_trip_context', __('Select a valid bus trip.', 'olama-transportation'));
+        }
+        return $context;
     }
 
     private function require_capability($capability)

@@ -201,6 +201,23 @@ class Olama_Transportation_Area_Assignments_Test extends WP_UnitTestCase
         $this->assertFalse(is_wp_error(Olama_Transportation_Area_Trip_Assignments::save($this->assignment($this->area_two))));
     }
 
+    public function test_student_assignment_screen_can_attach_another_area_to_a_defined_trip()
+    {
+        $this->assertFalse(is_wp_error(Olama_Transportation_Area_Trip_Assignments::save($this->assignment($this->area_one))));
+        $result = Olama_Transportation_Bus::attach_area_to_trip($this->bus_id, $this->year_id, 'morning', 1, $this->area_two);
+        $this->assertFalse(is_wp_error($result));
+        $trips = Olama_Transportation_Bus::get_assignment_trips($this->bus_id, $this->year_id);
+        $this->assertCount(1, $trips);
+        $this->assertSame(2, $trips[0]['area_count']);
+    }
+
+    public function test_student_assignment_screen_does_not_create_an_undefined_trip()
+    {
+        $result = Olama_Transportation_Bus::attach_area_to_trip($this->bus_id, $this->year_id, 'morning', 1, $this->area_two);
+        $this->assertWPError($result);
+        $this->assertSame('trip_not_defined', $result->get_error_code());
+    }
+
     public function test_combined_area_demand_is_aggregated_per_trip()
     {
         $one = $this->create_stop($this->area_one, 'manual', 'D1'); $this->add_demand($one, 3);

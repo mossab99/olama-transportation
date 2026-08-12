@@ -312,6 +312,177 @@ class Olama_Transportation_Bus
         );
     }
 
+    /** Trips must be planned before students can be selected for them. */
+    public static function get_assignment_trips($bus_id, $academic_year_id)
+    {
+        global $wpdb;
+        $allocations = Olama_Transportation_DB::table('area_bus_assignments');
+        $areas = Olama_Transportation_DB::table('major_areas');
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT a.direction,a.trip_number,COUNT(DISTINCT a.major_area_id) area_count,
+                    GROUP_CONCAT(DISTINCT m.name ORDER BY m.name SEPARATOR ', ') area_names
+             FROM {$allocations} a JOIN {$areas} m ON m.id=a.major_area_id
+             WHERE a.academic_year_id=%d AND a.bus_id=%d AND a.status='active'
+             GROUP BY a.direction,a.trip_number ORDER BY FIELD(a.direction,'morning','afternoon'),a.trip_number",
+            absint($academic_year_id), absint($bus_id)
+        ), ARRAY_A);
+        foreach ($rows as &$row) {
+            $row['trip_number'] = (int) $row['trip_number'];
+            $row['area_count'] = (int) $row['area_count'];
+        }
+        return $rows;
+    }
+
+    public static function get_trip_area_students($bus_id, $academic_year_id, $direction, $trip_number)
+    {
+        global $wpdb;
+        $context = self::assignment_trip_context($bus_id, $academic_year_id, $direction, $trip_number);
+        if (is_wp_error($context)) return $context;
+
+        $area_ids = $context['area_ids'];
+        $placeholders = implode(',', array_fill(0, count($area_ids), '%d'));
+        $students = olama_core()->read_models()->table('students');
+        $student_years = olama_core()->read_models()->table('student_years');
+        $stops = Olama_Transportation_DB::table('family_stops');
+        $areas = Olama_Transportation_DB::table('major_areas');
+        $assignments = $wpdb->prefix . 'olama_student_bus_assignments';
+        $enrollments = Olama_Transportation_DB::table('enrollments');
+        $has_enrollments = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$enrollments} WHERE academic_year_id=%d AND status='active'", $academic_year_id)) > 0;
+        $direction_column = $direction === 'morning' ? 'morning_enabled' : 'afternoon_enabled';
+
+        if ($has_enrollments) {
+            $sql = "SELECT DISTINCT s.id,s.student_uid,s.student_name,sy.class_name grade_name,sy.section_name,
+                           fs.major_area_id,m.name area_name,
+                           IF(a.bus_id=%d AND a.trip_number=%d,1,0) selected
+                    FROM {$enrollments} e
+                    JOIN {$students} s ON s.student_uid=e.student_uid
+                    LEFT JOIN {$student_years} sy ON sy.student_uid=s.student_uid AND sy.study_year IN (%s,%s)
+                    JOIN {$stops} fs ON fs.family_uid=e.family_uid OR (e.family_uid IS NULL AND fs.oracle_family_id=e.oracle_family_id)
+                    JOIN {$areas} m ON m.id=fs.major_area_id
+                    LEFT JOIN {$assignments} a ON a.student_uid=s.student_uid AND a.academic_year_id=%d AND a.direction=%s
+                    WHERE e.academic_year_id=%d AND e.status='active' AND e.{$direction_column}=1
+                      AND fs.major_area_id IN ({$placeholders})
+                    ORDER BY m.name,sy.class_name,sy.section_name,s.student_name";
+            $params = array_merge(array($bus_id, $trip_number, $context['study_year'], $context['alternate_year'], $academic_year_id, $direction, $academic_year_id), $area_ids);
+        } else {
+            $sql = "SELECT DISTINCT s.id,s.student_uid,s.student_name,sy.class_name grade_name,sy.section_name,
+                           fs.major_area_id,m.name area_name,
+                           IF(a.bus_id=%d AND a.trip_number=%d,1,0) selected
+                    FROM {$student_years} sy JOIN {$students} s ON s.student_uid=sy.student_uid
+                    JOIN {$stops} fs ON fs.family_uid=sy.family_uid
+                    JOIN {$areas} m ON m.id=fs.major_area_id
+                    LEFT JOIN {$assignments} a ON a.student_uid=s.student_uid AND a.academic_year_id=%d AND a.direction=%s
+                    WHERE sy.study_year IN (%s,%s) AND fs.major_area_id IN ({$placeholders})
+                    ORDER BY m.name,sy.class_name,sy.section_name,s.student_name";
+            $params = array_merge(array($bus_id, $trip_number, $academic_year_id, $direction, $context['study_year'], $context['alternate_year']), $area_ids);
+        }
+        $rows = $wpdb->get_results($wpdb->prepare($sql, $params), ARRAY_A);
+        foreach ($rows as &$row) {
+            $row['id'] = (int) $row['id'];
+            $row['major_area_id'] = (int) $row['major_area_id'];
+            $row['selected'] = (bool) $row['selected'];
+        }
+
+        return array(
+            'students' => $rows,
+            'areas' => $context['areas'],
+            'available_areas' => self::available_attachment_areas($area_ids),
+            'capacity' => self::get_bus_capacity_info($bus_id, $academic_year_id, $direction, $trip_number),
+            'demand_mode' => $has_enrollments ? 'transport_enrollments' : 'academic_registration_fallback',
+        );
+    }
+
+    public static function sync_trip_students($bus_id, $academic_year_id, $direction, $trip_number, $student_ids)
+    {
+        global $wpdb;
+        $data = self::get_trip_area_students($bus_id, $academic_year_id, $direction, $trip_number);
+        if (is_wp_error($data)) return $data;
+        $eligible = array();
+        foreach ($data['students'] as $student) $eligible[(int) $student['id']] = $student;
+        $student_ids = array_values(array_unique(array_filter(array_map('absint', $student_ids))));
+        foreach ($student_ids as $student_id) {
+            if (!isset($eligible[$student_id])) return new WP_Error('invalid_trip_student', __('A selected student does not belong to an area attached to this trip.', 'olama-transportation'));
+        }
+        if (count($student_ids) > (int) $data['capacity']['total']) {
+            return new WP_Error('capacity_exceeded', sprintf(__('Cannot select %1$d students. This trip has %2$d seats.', 'olama-transportation'), count($student_ids), $data['capacity']['total']));
+        }
+
+        $table = $wpdb->prefix . 'olama_student_bus_assignments';
+        $selected_uids = array();
+        foreach ($student_ids as $id) $selected_uids[] = (string) $eligible[$id]['student_uid'];
+        $wpdb->query('START TRANSACTION');
+        $existing = $wpdb->get_results($wpdb->prepare(
+            "SELECT id,student_uid FROM {$table} WHERE bus_id=%d AND academic_year_id=%d AND direction=%s AND trip_number=%d FOR UPDATE",
+            $bus_id, $academic_year_id, $direction, $trip_number
+        ), ARRAY_A);
+        foreach ($existing as $row) {
+            if (!in_array((string) $row['student_uid'], $selected_uids, true) && $wpdb->delete($table, array('id' => (int) $row['id'])) === false) {
+                $wpdb->query('ROLLBACK');
+                return new WP_Error('assignment_save_failed', __('Could not deselect a student.', 'olama-transportation'));
+            }
+        }
+        foreach ($student_ids as $student_id) {
+            $student = $eligible[$student_id];
+            $record = array('student_id'=>$student_id,'student_uid'=>$student['student_uid'],'bus_id'=>$bus_id,'academic_year_id'=>$academic_year_id,'direction'=>$direction,'trip_number'=>$trip_number,'assigned_at'=>current_time('mysql'),'assigned_by'=>get_current_user_id());
+            $existing_id = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$table} WHERE student_uid=%s AND academic_year_id=%d AND direction=%s", $student['student_uid'], $academic_year_id, $direction));
+            $saved = $existing_id ? $wpdb->update($table, $record, array('id'=>(int)$existing_id)) : $wpdb->insert($table, $record);
+            if ($saved === false) {
+                $wpdb->query('ROLLBACK');
+                return new WP_Error('assignment_save_failed', $wpdb->last_error ?: __('Could not save student selections.', 'olama-transportation'));
+            }
+        }
+        $wpdb->query('COMMIT');
+        return array('selected' => count($student_ids));
+    }
+
+    public static function attach_area_to_trip($bus_id, $academic_year_id, $direction, $trip_number, $major_area_id)
+    {
+        global $wpdb;
+        $bus = self::get_bus($bus_id);
+        $direction = sanitize_key($direction);
+        $limit_field = $direction === 'morning' ? 'morning_trip_count' : 'afternoon_trip_count';
+        if (!$bus || !in_array($direction, array('morning','afternoon'), true) || $trip_number < 1 || $trip_number > (int) $bus->{$limit_field}) {
+            return new WP_Error('invalid_trip', __('Select a valid trip for this bus.', 'olama-transportation'));
+        }
+        $areas = Olama_Transportation_DB::table('major_areas');
+        $area = $wpdb->get_row($wpdb->prepare("SELECT id FROM {$areas} WHERE id=%d AND status='active'", $major_area_id), ARRAY_A);
+        if (!$area) return new WP_Error('invalid_area', __('Select an active planning area.', 'olama-transportation'));
+        $table = Olama_Transportation_DB::table('area_bus_assignments');
+        $defined = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$table} WHERE academic_year_id=%d AND bus_id=%d AND direction=%s AND trip_number=%d AND status='active' LIMIT 1", $academic_year_id, $bus_id, $direction, $trip_number));
+        if (!$defined) return new WP_Error('trip_not_defined', __('Define this bus trip before attaching another area.', 'olama-transportation'));
+        $exists = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$table} WHERE academic_year_id=%d AND bus_id=%d AND direction=%s AND trip_number=%d AND major_area_id=%d AND status='active'", $academic_year_id, $bus_id, $direction, $trip_number, $major_area_id));
+        if ($exists) return (int) $exists;
+        $now = current_time('mysql', true);
+        $saved = $wpdb->insert($table, array('academic_year_id'=>absint($academic_year_id),'direction'=>$direction,'major_area_id'=>absint($major_area_id),'bus_id'=>absint($bus_id),'trip_number'=>absint($trip_number),'status'=>'active','created_by'=>get_current_user_id()?:null,'updated_by'=>get_current_user_id()?:null,'created_at'=>$now,'updated_at'=>$now));
+        if (!$saved) return new WP_Error('area_attach_failed', $wpdb->last_error ?: __('Could not attach the area.', 'olama-transportation'));
+        $id = (int) $wpdb->insert_id;
+        if (class_exists('Olama_Transportation_Audit')) Olama_Transportation_Audit::record('trip_area_attached', 'area_bus_assignment', $id, null, array('bus_id'=>$bus_id,'direction'=>$direction,'trip_number'=>$trip_number,'major_area_id'=>$major_area_id));
+        return $id;
+    }
+
+    private static function assignment_trip_context($bus_id, $academic_year_id, $direction, $trip_number)
+    {
+        global $wpdb;
+        $direction = sanitize_key($direction);
+        if (!self::get_bus($bus_id) || !in_array($direction, array('morning','afternoon'), true) || !$trip_number) return new WP_Error('invalid_trip', __('Select a valid bus trip.', 'olama-transportation'));
+        $allocations = Olama_Transportation_DB::table('area_bus_assignments');
+        $areas_table = Olama_Transportation_DB::table('major_areas');
+        $areas = $wpdb->get_results($wpdb->prepare("SELECT DISTINCT m.id,m.name FROM {$allocations} a JOIN {$areas_table} m ON m.id=a.major_area_id WHERE a.academic_year_id=%d AND a.bus_id=%d AND a.direction=%s AND a.trip_number=%d AND a.status='active' ORDER BY m.name", $academic_year_id, $bus_id, $direction, $trip_number), ARRAY_A);
+        if (!$areas) return new WP_Error('trip_not_defined', __('This bus trip has not been defined yet.', 'olama-transportation'));
+        $study_year = self::study_year($academic_year_id);
+        if (!$study_year) return new WP_Error('invalid_academic_year', __('The academic year could not be mapped to Olama Core.', 'olama-transportation'));
+        return array('areas'=>$areas,'area_ids'=>array_map('intval',wp_list_pluck($areas,'id')),'study_year'=>$study_year,'alternate_year'=>strpos($study_year,'/')!==false?str_replace('/','-',$study_year):str_replace('-','/',$study_year));
+    }
+
+    private static function available_attachment_areas($excluded_ids)
+    {
+        global $wpdb;
+        $table = Olama_Transportation_DB::table('major_areas');
+        $sql = "SELECT id,name FROM {$table} WHERE status='active'";
+        if ($excluded_ids) $sql .= ' AND id NOT IN (' . implode(',', array_map('absint', $excluded_ids)) . ')';
+        return $wpdb->get_results($sql . ' ORDER BY name', ARRAY_A);
+    }
+
     public static function unassign_student($student_id, $academic_year_id)
     {
         global $wpdb;
@@ -372,7 +543,7 @@ class Olama_Transportation_Bus
         ", $student_id, $academic_year_id));
     }
 
-    public static function get_bus_capacity_info($bus_id, $academic_year_id)
+    public static function get_bus_capacity_info($bus_id, $academic_year_id, $direction = null, $trip_number = null)
     {
         global $wpdb;
 
@@ -381,11 +552,18 @@ class Olama_Transportation_Bus
             return array('total' => 0, 'assigned' => 0, 'available' => 0, 'percentage' => 0);
         }
 
+        $scope = '';
+        $params = array($bus_id, $academic_year_id);
+        if ($direction && $trip_number) {
+            $scope = ' AND direction = %s AND trip_number = %d';
+            $params[] = sanitize_key($direction);
+            $params[] = absint($trip_number);
+        }
         $assigned_count = $wpdb->get_var($wpdb->prepare("
             SELECT COUNT(*)
             FROM {$wpdb->prefix}olama_student_bus_assignments
-            WHERE bus_id = %d AND academic_year_id = %d
-        ", $bus_id, $academic_year_id));
+            WHERE bus_id = %d AND academic_year_id = %d{$scope}
+        ", $params));
 
         $total = intval($bus->planning_capacity ?: $bus->passenger_capacity);
         $assigned = intval($assigned_count);

@@ -41,7 +41,7 @@ Capacity is scoped to academic year + direction + bus + trip. Positive `planning
 
 `wp_olama_transport_planning_groups` and `wp_olama_transport_planning_group_families` remain intact. Their REST routes are deprecated compatibility APIs. The primary UI cannot create or edit polygons and does not enqueue Leaflet Draw. Legacy membership never participates in effective assignment resolution; the admin shows a read-only historical table.
 
-`wp_olama_student_bus_assignments` remains the legacy annual student-to-bus workflow. Area planning never writes it because it cannot represent direction, trip number, or family inheritance. Route versions, optimization, tracking, imports, and Core bus synchronization remain independent.
+`wp_olama_student_bus_assignments` stores the manual student selection for an academic year and direction, including its bus and trip number. The assignment workspace only exposes trips already defined in area planning, derives eligible students from every area attached to that trip, and lets an operator select or deselect individuals. Attaching an additional area expands eligibility but does not automatically select its students. Route versions, optimization, tracking, imports, and Core bus synchronization remain independent.
 
 ## Permissions and audits
 

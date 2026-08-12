@@ -13,7 +13,7 @@
     }
     function tripHtml(trip) {
         var time = [trip.arrival_time && 'Arrival ' + trip.arrival_time.slice(0, 5), trip.departure_time && 'Departure ' + trip.departure_time.slice(0, 5)].filter(Boolean).join(' · ');
-        return '<li><strong>' + esc(trip.bus_number) + ' — Trip ' + trip.trip_number + '</strong> <span>' + trip.student_count + '/' + trip.capacity + ' students, ' + trip.family_count + ' families</span>' + (time ? '<small>' + esc(time) + '</small>' : '') + '<button class="button button-small areas-show-queue" data-trip="' + trip.id + '">View queue</button> <button class="button button-small areas-generate-queue" data-trip="' + trip.id + '">Generate family queue</button></li>';
+        return '<li><strong>Bus ' + esc(trip.bus_number) + ' — Trip ' + trip.trip_number + '</strong> <span>' + trip.student_count + '/' + trip.capacity + ' students, ' + trip.family_count + ' families</span>' + (time ? '<small>' + esc(time) + '</small>' : '') + '<button class="button button-small areas-show-queue" data-trip="' + trip.id + '">View queue</button> <button class="button button-small areas-generate-queue" data-trip="' + trip.id + '">Generate family queue</button></li>';
     }
     function render() {
         var direction = $('#areas-direction').val();
