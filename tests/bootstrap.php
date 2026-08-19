@@ -18,6 +18,7 @@ tests_add_filter('muplugins_loaded', function () {
     require_once dirname(__DIR__) . '/includes/class-effective-assignments.php';
     require_once dirname(__DIR__) . '/includes/class-family-area-assignments.php';
     require_once dirname(__DIR__) . '/includes/class-area-trip-assignments.php';
+    require_once dirname(__DIR__) . '/includes/class-shared-trips.php';
     require_once dirname(__DIR__) . '/includes/class-geographic-planning.php';
     require_once dirname(__DIR__) . '/includes/class-rest.php';
 });

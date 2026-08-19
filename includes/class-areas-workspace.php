@@ -26,11 +26,17 @@ class Olama_Transportation_Areas_Workspace
             $trip['capacity'] = (int)($trip['planning_capacity'] ?: $trip['passenger_capacity']);
             $by_area[(int)$trip['major_area_id']][] = $trip;
         }
+        $shared_by_area = Olama_Transportation_Shared_Trips::area_contributions($year, $direction);
         foreach ($resolved['areas'] as &$area) {
             $area['area_type'] = in_array($area['area_type'] ?? '', array('main','secondary'), true) ? $area['area_type'] : 'secondary';
             $area['trips'] = $by_area[(int)$area['id']] ?? array();
+            $area['shared_trips'] = $shared_by_area[(int)$area['id']] ?? array();
         }
-        return array('areas'=>$resolved['areas'], 'buses'=>self::available_buses(), 'demand_mode'=>$resolved['demand_mode'], 'warning'=>$resolved['warning']);
+        return array(
+            'areas'=>$resolved['areas'], 'buses'=>self::available_buses(),
+            'shared_trips'=>Olama_Transportation_Shared_Trips::list_for_context($year, $direction),
+            'demand_mode'=>$resolved['demand_mode'], 'warning'=>$resolved['warning']
+        );
     }
 
     public static function update_area($id, $data)

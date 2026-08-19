@@ -201,6 +201,79 @@ class Olama_Transportation_DB
             KEY family_uid (family_uid)
         ) $cc;");
 
+        dbDelta("CREATE TABLE {$p}olama_transport_shared_trips (
+            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            academic_year_id bigint(20) UNSIGNED NOT NULL,
+            direction varchar(20) NOT NULL,
+            name varchar(180) NOT NULL,
+            planning_limit smallint(5) UNSIGNED NOT NULL DEFAULT 35,
+            bus_id bigint(20) UNSIGNED DEFAULT NULL,
+            bus_trip_number tinyint(3) UNSIGNED DEFAULT NULL,
+            arrival_time time DEFAULT NULL,
+            departure_time time DEFAULT NULL,
+            trip_limit_acknowledged tinyint(1) NOT NULL DEFAULT 0,
+            bus_limit_acknowledged tinyint(1) NOT NULL DEFAULT 0,
+            status varchar(20) NOT NULL DEFAULT 'draft',
+            published_by bigint(20) UNSIGNED DEFAULT NULL,
+            published_at datetime DEFAULT NULL,
+            created_by bigint(20) UNSIGNED DEFAULT NULL,
+            updated_by bigint(20) UNSIGNED DEFAULT NULL,
+            created_at datetime NOT NULL,
+            updated_at datetime NOT NULL,
+            PRIMARY KEY (id),
+            KEY year_direction (academic_year_id,direction,status),
+            KEY bus_slot (academic_year_id,direction,bus_id,bus_trip_number,status)
+        ) $cc;");
+
+        dbDelta("CREATE TABLE {$p}olama_transport_shared_trip_areas (
+            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            trip_id bigint(20) UNSIGNED NOT NULL,
+            major_area_id bigint(20) UNSIGNED NOT NULL,
+            created_at datetime NOT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY trip_area (trip_id,major_area_id),
+            KEY area_trip (major_area_id,trip_id)
+        ) $cc;");
+
+        dbDelta("CREATE TABLE {$p}olama_transport_shared_trip_students (
+            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            trip_id bigint(20) UNSIGNED NOT NULL,
+            student_id bigint(20) UNSIGNED NOT NULL,
+            student_uid varchar(100) NOT NULL,
+            oracle_student_id varchar(100) DEFAULT NULL,
+            student_name varchar(255) NOT NULL,
+            family_uid varchar(100) NOT NULL,
+            oracle_family_id varchar(100) DEFAULT NULL,
+            major_area_id bigint(20) UNSIGNED NOT NULL,
+            grade_name varchar(100) DEFAULT NULL,
+            section_name varchar(100) DEFAULT NULL,
+            created_at datetime NOT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY trip_student (trip_id,student_uid),
+            KEY student_lookup (student_uid),
+            KEY trip_area (trip_id,major_area_id)
+        ) $cc;");
+
+        dbDelta("CREATE TABLE {$p}olama_transport_shared_trip_queue (
+            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            trip_id bigint(20) UNSIGNED NOT NULL,
+            node_key varchar(120) NOT NULL,
+            node_type varchar(20) NOT NULL,
+            family_uid varchar(100) DEFAULT NULL,
+            family_name varchar(255) DEFAULT NULL,
+            oracle_family_id varchar(100) DEFAULT NULL,
+            student_count smallint(5) UNSIGNED NOT NULL DEFAULT 0,
+            queue_position int(10) UNSIGNED NOT NULL DEFAULT 0,
+            latitude decimal(10,7) DEFAULT NULL,
+            longitude decimal(10,7) DEFAULT NULL,
+            location_status varchar(30) NOT NULL DEFAULT 'missing_location',
+            created_at datetime NOT NULL,
+            updated_at datetime NOT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY trip_node (trip_id,node_key),
+            KEY trip_queue (trip_id,queue_position)
+        ) $cc;");
+
         dbDelta("CREATE TABLE {$p}olama_transport_route_versions (
             id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
             academic_year_id bigint(20) UNSIGNED NOT NULL,
@@ -491,6 +564,9 @@ class Olama_Transportation_DB
         if (!in_array('trip_number', $columns, true)) {
             $wpdb->query("ALTER TABLE {$table} ADD trip_number tinyint(3) UNSIGNED NOT NULL DEFAULT 1 AFTER direction");
         }
+        if (!in_array('shared_trip_id', $columns, true)) {
+            $wpdb->query("ALTER TABLE {$table} ADD shared_trip_id bigint(20) UNSIGNED DEFAULT NULL AFTER trip_number");
+        }
         $indexes = $wpdb->get_results("SHOW INDEX FROM {$table}", ARRAY_A);
         $index_names = array_unique(wp_list_pluck($indexes, 'Key_name'));
         if (in_array('student_uid_year', $index_names, true)) {
@@ -501,6 +577,9 @@ class Olama_Transportation_DB
         }
         if (!in_array('bus_trip', $index_names, true)) {
             $wpdb->query("ALTER TABLE {$table} ADD KEY bus_trip (bus_id, academic_year_id, direction, trip_number)");
+        }
+        if (!in_array('shared_trip_id', $index_names, true)) {
+            $wpdb->query("ALTER TABLE {$table} ADD KEY shared_trip_id (shared_trip_id)");
         }
 
         $students_table = olama_core()->read_models()->table('students');

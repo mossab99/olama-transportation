@@ -51,15 +51,29 @@ $translate = array('Olama_School_Helpers', 'translate');
         <?php if ($active_tab === 'areas'): ?>
             <div id="olama-areas-workspace" class="olama-card" data-year-id="<?php echo intval($selected_year_id); ?>">
                 <div class="olama-transportation-toolbar">
-                    <div><h2><?php echo esc_html($translate('Areas & Trip Allocation')); ?></h2><p class="description"><?php echo esc_html($translate('Oracle areas are read-only. Manage local transport type, color, trips and family queues here.')); ?></p></div>
-                    <button type="button" class="button" id="areas-refresh-core"><?php echo esc_html($translate('Refresh Areas from Olama Core')); ?></button>
+                    <div><h2><?php echo esc_html($translate('Trip Planning Workspace')); ?></h2><p class="description"><?php echo esc_html($translate('Create an independent trip, assign or replace its bus, then attach areas and students.')); ?></p></div>
+                    <div><button type="button" class="button" id="areas-refresh-core"><?php echo esc_html($translate('Refresh Areas from Olama Core')); ?></button> <button type="button" class="button button-primary" id="olama-create-trip-plan"><?php echo esc_html($translate('Create Trip')); ?></button></div>
                 </div>
                 <div class="olama-area-filters">
                     <label><?php echo esc_html($translate('Academic Year')); ?><select id="areas-year"><?php foreach ($years as $year): ?><option value="<?php echo intval($year->id); ?>" <?php selected($selected_year_id,$year->id); ?>><?php echo esc_html($year->year_name); ?></option><?php endforeach; ?></select></label>
                     <label><?php echo esc_html($translate('Direction')); ?><select id="areas-direction"><option value="morning"><?php echo esc_html($translate('Morning / Arrival')); ?></option><option value="afternoon"><?php echo esc_html($translate('Afternoon / Departure')); ?></option></select></label>
                 </div>
                 <div id="areas-feedback" class="olama-operation-result" aria-live="polite"></div>
-                <div class="olama-area-table-wrap"><table class="wp-list-table widefat striped olama-area-table"><thead><tr><th><?php echo esc_html($translate('Oracle Area')); ?></th><th><?php echo esc_html($translate('Students')); ?></th><th><?php echo esc_html($translate('Area Type')); ?></th><th><?php echo esc_html($translate('Color')); ?></th><th><?php echo esc_html($translate('Trips & Family Queue')); ?></th><th><?php echo esc_html($translate('Add Trip')); ?></th></tr></thead><tbody id="areas-body"><tr><td colspan="6"><?php echo esc_html($translate('Loading...')); ?></td></tr></tbody></table></div>
+                <section class="olama-trip-board"><div class="olama-trip-board-head"><h3><?php echo esc_html($translate('Trips')); ?></h3><span id="olama-trip-board-summary"></span></div><div id="olama-trip-board-list" class="olama-trip-board-list"></div></section>
+                <details class="olama-area-demand-panel"><summary><?php echo esc_html($translate('Area demand and assignments')); ?></summary><div class="olama-area-table-wrap"><table class="wp-list-table widefat striped olama-area-table"><thead><tr><th><?php echo esc_html($translate('Oracle Area')); ?></th><th><?php echo esc_html($translate('Students')); ?></th><th><?php echo esc_html($translate('Area Type')); ?></th><th><?php echo esc_html($translate('Color')); ?></th><th><?php echo esc_html($translate('Assigned Trips')); ?></th></tr></thead><tbody id="areas-body"><tr><td colspan="5"><?php echo esc_html($translate('Loading...')); ?></td></tr></tbody></table></div></details>
+                <dialog id="olama-trip-wizard-dialog" class="olama-trip-wizard-dialog" aria-labelledby="olama-trip-wizard-title">
+                    <div class="olama-trip-wizard" data-step="1">
+                        <header class="olama-trip-wizard-head"><div><h2 id="olama-trip-wizard-title"></h2><p id="olama-trip-wizard-context"></p></div><button type="button" class="olama-trip-wizard-close" aria-label="<?php echo esc_attr($translate('Close')); ?>">×</button></header>
+                        <ol class="olama-trip-steps"><li><span>1</span><?php echo esc_html($translate('Trip Details')); ?></li><li><span>2</span><?php echo esc_html($translate('Bus Assignment')); ?></li><li><span>3</span><?php echo esc_html($translate('Areas & Students')); ?></li><li><span>4</span><?php echo esc_html($translate('Family Queue')); ?></li></ol>
+                        <div id="olama-trip-wizard-summary" class="olama-trip-wizard-summary"></div>
+                        <div id="olama-trip-wizard-feedback" class="olama-operation-result" aria-live="polite"></div>
+                        <section class="olama-trip-step-panel" data-step-panel="1"></section>
+                        <section class="olama-trip-step-panel" data-step-panel="2"></section>
+                        <section class="olama-trip-step-panel" data-step-panel="3"></section>
+                        <section class="olama-trip-step-panel" data-step-panel="4"></section>
+                        <footer class="olama-trip-wizard-actions"><button type="button" class="button" id="olama-trip-wizard-back"><?php echo esc_html($translate('Back')); ?></button><span id="olama-trip-wizard-mode-note"><?php echo esc_html($translate('Draft changes save as you continue.')); ?></span><button type="button" class="button button-primary" id="olama-trip-wizard-next"><?php echo esc_html($translate('Save & continue')); ?></button></footer>
+                    </div>
+                </dialog>
             </div>
         <?php endif; ?>
 

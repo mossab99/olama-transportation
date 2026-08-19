@@ -66,6 +66,32 @@ class Olama_Transportation_REST
         register_rest_route(self::NS, '/areas-workspace/trips/(?P<id>\d+)/queue', array(
             array('methods'=>WP_REST_Server::READABLE,'callback'=>array($this,'workspace_queue'),'permission_callback'=>array($this,'can_view')),
         ));
+        register_rest_route(self::NS, '/areas-workspace/shared-trips', array(
+            array('methods'=>WP_REST_Server::CREATABLE,'callback'=>array($this,'create_shared_trip'),'permission_callback'=>array($this,'can_manage')),
+        ));
+        register_rest_route(self::NS, '/areas-workspace/shared-trips/(?P<id>\d+)', array(
+            array('methods'=>WP_REST_Server::READABLE,'callback'=>array($this,'get_shared_trip'),'permission_callback'=>array($this,'can_view')),
+            array('methods'=>WP_REST_Server::EDITABLE,'callback'=>array($this,'update_shared_trip'),'permission_callback'=>array($this,'can_manage')),
+            array('methods'=>WP_REST_Server::DELETABLE,'callback'=>array($this,'delete_shared_trip_draft'),'permission_callback'=>array($this,'can_manage')),
+        ));
+        register_rest_route(self::NS, '/areas-workspace/shared-trips/(?P<id>\d+)/candidates', array(
+            array('methods'=>WP_REST_Server::READABLE,'callback'=>array($this,'shared_trip_candidates'),'permission_callback'=>array($this,'can_view')),
+        ));
+        register_rest_route(self::NS, '/areas-workspace/shared-trips/(?P<id>\d+)/students', array(
+            array('methods'=>WP_REST_Server::EDITABLE,'callback'=>array($this,'save_shared_trip_students'),'permission_callback'=>array($this,'can_manage')),
+        ));
+        register_rest_route(self::NS, '/areas-workspace/shared-trips/(?P<id>\d+)/areas', array(
+            array('methods'=>WP_REST_Server::EDITABLE,'callback'=>array($this,'save_shared_trip_areas'),'permission_callback'=>array($this,'can_manage')),
+        ));
+        register_rest_route(self::NS, '/areas-workspace/shared-trips/(?P<id>\d+)/queue', array(
+            array('methods'=>WP_REST_Server::CREATABLE,'callback'=>array($this,'build_shared_trip_queue'),'permission_callback'=>array($this,'can_manage')),
+        ));
+        register_rest_route(self::NS, '/areas-workspace/shared-trips/(?P<id>\d+)/publish', array(
+            array('methods'=>WP_REST_Server::CREATABLE,'callback'=>array($this,'publish_shared_trip'),'permission_callback'=>array($this,'can_approve')),
+        ));
+        register_rest_route(self::NS, '/areas-workspace/shared-trips/(?P<id>\d+)/return-to-draft', array(
+            array('methods'=>WP_REST_Server::CREATABLE,'callback'=>array($this,'return_shared_trip_to_draft'),'permission_callback'=>array($this,'can_approve')),
+        ));
         register_rest_route(self::NS, '/planning/area-allocations', array(
             array('methods' => WP_REST_Server::READABLE, 'callback' => array($this, 'area_allocations'), 'permission_callback' => array($this, 'can_view')),
             array('methods' => WP_REST_Server::CREATABLE, 'callback' => array($this, 'save_area_allocation'), 'permission_callback' => array($this, 'can_manage')),
@@ -251,6 +277,16 @@ class Olama_Transportation_REST
     public function create_workspace_trip(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Areas_Workspace::create_trip($request->get_json_params() ?: $request->get_params())); }
     public function generate_workspace_queue(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Areas_Workspace::generate_queue($request['id'])); }
     public function workspace_queue(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Areas_Workspace::queue($request['id'])); }
+    public function create_shared_trip(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Shared_Trips::create($request->get_json_params() ?: $request->get_params())); }
+    public function get_shared_trip(WP_REST_Request $request) { $trip=Olama_Transportation_Shared_Trips::get($request['id']); return $trip ? rest_ensure_response($trip) : new WP_Error('shared_trip_not_found', __('Trip was not found.', 'olama-transportation'), array('status'=>404)); }
+    public function update_shared_trip(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Shared_Trips::update($request['id'], $request->get_json_params() ?: $request->get_params())); }
+    public function delete_shared_trip_draft(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Shared_Trips::delete_draft($request['id'])); }
+    public function shared_trip_candidates(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Shared_Trips::candidates($request['id'], $request->get_param('major_area_id'))); }
+    public function save_shared_trip_students(WP_REST_Request $request) { $input=$request->get_json_params() ?: $request->get_params(); return $this->respond(Olama_Transportation_Shared_Trips::save_area_students($request['id'], $input['major_area_id'] ?? 0, $input['student_uids'] ?? array())); }
+    public function save_shared_trip_areas(WP_REST_Request $request) { $input=$request->get_json_params() ?: $request->get_params(); return $this->respond(Olama_Transportation_Shared_Trips::save_areas($request['id'], $input['area_ids'] ?? array())); }
+    public function build_shared_trip_queue(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Shared_Trips::build_queue($request['id'])); }
+    public function publish_shared_trip(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Shared_Trips::publish($request['id'])); }
+    public function return_shared_trip_to_draft(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Shared_Trips::return_to_draft($request['id'])); }
 
     public function area_allocations(WP_REST_Request $request)
     {

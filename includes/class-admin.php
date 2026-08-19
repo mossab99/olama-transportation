@@ -256,8 +256,10 @@ class Olama_Transportation_Admin
             ));
         }
         if ($tab === 'areas') {
+            $this->enqueue_style('olama-leaflet', 'assets/vendor/leaflet/leaflet.css');
+            wp_enqueue_script('olama-leaflet', OLAMA_TRANSPORTATION_URL . 'assets/vendor/leaflet/leaflet.js', array(), $this->asset_version(OLAMA_TRANSPORTATION_PATH . 'assets/vendor/leaflet/leaflet.js'), true);
             $script_path = OLAMA_TRANSPORTATION_PATH . 'assets/js/areas-workspace.js';
-            wp_enqueue_script('olama-areas-workspace', OLAMA_TRANSPORTATION_URL . 'assets/js/areas-workspace.js', array('jquery'), $this->asset_version($script_path), true);
+            wp_enqueue_script('olama-areas-workspace', OLAMA_TRANSPORTATION_URL . 'assets/js/areas-workspace.js', array('jquery','olama-leaflet'), $this->asset_version($script_path), true);
         }
     }
 
