@@ -22,11 +22,13 @@ class Olama_Transportation_Family_Locations
         $families = olama_core()->read_models()->table('families');
         $student_years = olama_core()->read_models()->table('student_years');
         $stops = Olama_Transportation_DB::table('family_stops');
+        self::ensure_default_planning_areas($student_years, $families, $stops, $study_year, $alternate_year);
 
         $rows = $wpdb->get_results($wpdb->prepare(
             "SELECT f.family_uid, f.oracle_family_id,
                     COALESCE(NULLIF(f.sponsor_full_name, ''), NULLIF(f.father_name, ''), f.oracle_family_id) AS family_name,
                     COALESCE(NULLIF(f.primary_mobile, ''), NULLIF(f.father_mobile, ''), f.mother_mobile) AS mobile,
+                    f.father_mobile, f.mother_mobile,
                     COALESCE(NULLIF(f.family_address, ''), f.address) AS oracle_address,
                     COUNT(DISTINCT sy.student_uid) AS registered_students,
                     f.trans_region_id, f.trans_region_name,
@@ -62,9 +64,18 @@ class Olama_Transportation_Family_Locations
                 $effective[$direction][$family['family_uid']] = $family;
             }
         }
+        $area_defaults = self::area_defaults();
         foreach ($rows as &$row) {
             $row['effective_morning'] = $effective['morning'][$row['family_uid']] ?? null;
             $row['effective_afternoon'] = $effective['afternoon'][$row['family_uid']] ?? null;
+            $default_area_id = (int) ($area_defaults['regions'][(string) $row['trans_region_id']] ?? $area_defaults['names'][(string) $row['trans_region_name']] ?? 0);
+            $row['default_major_area_id'] = $default_area_id ?: null;
+            if (empty($row['major_area_id']) && ($row['area_assignment_source'] ?? '') !== 'manual' && $default_area_id) {
+                $row['major_area_id'] = $default_area_id;
+                $row['major_area_name'] = $area_defaults['area_names'][$default_area_id] ?? '';
+            }
+            $row['is_area_override'] = ($row['area_assignment_source'] ?? '') === 'manual'
+                && (int) ($row['major_area_id'] ?? 0) !== (int) $default_area_id;
         }
         unset($row);
         return $rows;
@@ -75,16 +86,18 @@ class Olama_Transportation_Family_Locations
         $rows = self::registered_families($academic_year_id);
         $search = trim(sanitize_text_field($args['search'] ?? ''));
         $area = sanitize_text_field((string) ($args['major_area_id'] ?? ''));
+        $oracle_area = sanitize_text_field((string) ($args['oracle_area'] ?? 'all'));
         $location = sanitize_key($args['location_status'] ?? 'all');
         $morning = sanitize_key($args['morning_status'] ?? 'all');
         $afternoon = sanitize_key($args['afternoon_status'] ?? 'all');
         $missing_only = !empty($args['missing_locations']);
-        $filtered = array_values(array_filter($rows, function ($row) use ($search, $area, $location, $morning, $afternoon, $missing_only) {
+        $filtered = array_values(array_filter($rows, function ($row) use ($search, $area, $oracle_area, $location, $morning, $afternoon, $missing_only) {
             $has_location = $row['latitude'] !== null && $row['longitude'] !== null;
             $location_status = !$has_location ? 'missing_location' : sanitize_key($row['verification_status'] ?: 'invalid_location');
             if ($search !== '' && stripos($row['family_name'] . ' ' . $row['oracle_family_id'] . ' ' . ($row['mobile'] ?? ''), $search) === false) return false;
             if ($area === 'unassigned' && !empty($row['major_area_id'])) return false;
             if ($area !== '' && $area !== 'all' && $area !== 'unassigned' && (int) $row['major_area_id'] !== absint($area)) return false;
+            if ($oracle_area !== 'all' && (string) $row['trans_region_id'] !== $oracle_area) return false;
             if ($missing_only && $has_location) return false;
             if ($location !== 'all' && $location_status !== $location) return false;
             if ($morning !== 'all' && sanitize_key($row['effective_morning']['assignment_status'] ?? 'missing_area') !== $morning) return false;
@@ -94,8 +107,24 @@ class Olama_Transportation_Family_Locations
         $per_page = min(100, max(20, absint($args['per_page'] ?? 20)));
         $page = max(1, absint($args['page'] ?? 1));
         $total = count($filtered);
+        $items = array_slice($filtered, ($page - 1) * $per_page, $per_page);
+        foreach ($items as &$item) {
+            $transport_rows = olama_core()->transportation()->get_family($item['oracle_family_id'], Olama_Transportation_Bus::study_year($academic_year_id));
+            $item['is_transport_subscribed'] = count(array_filter($transport_rows, static function ($transport) {
+                return !isset($transport['is_active']) || $transport['is_active'] === null || (int) $transport['is_active'] === 1;
+            })) > 0;
+        }
+        unset($item);
+        $oracle_areas = array();
+        foreach ($rows as $row) {
+            if ((string) $row['trans_region_id'] !== '') {
+                $oracle_areas[(string) $row['trans_region_id']] = (string) ($row['trans_region_name'] ?: $row['trans_region_id']);
+            }
+        }
+        natcasesort($oracle_areas);
         return array(
-            'items' => array_slice($filtered, ($page - 1) * $per_page, $per_page),
+            'items' => $items,
+            'oracle_areas' => array_map(static function ($id, $name) { return array('id' => $id, 'name' => $name); }, array_keys($oracle_areas), array_values($oracle_areas)),
             'pagination' => array('page' => $page, 'per_page' => $per_page, 'total' => $total, 'total_pages' => max(1, (int) ceil($total / $per_page))),
             'metrics' => array(
                 'registered_transportation_families' => count($rows),
@@ -160,7 +189,9 @@ class Olama_Transportation_Family_Locations
             'area_text' => $family['trans_region_name'],
             'major_area_id' => $major_area_id,
             'source' => 'whatsapp_manual',
-            'verification_status' => 'needs_review',
+            'verification_status' => 'approved',
+            'verified_by' => get_current_user_id() ?: null,
+            'verified_at' => current_time('mysql', true),
             'notes' => sanitize_textarea_field($notes),
         ), $existing_id);
         if (is_wp_error($saved)) {
@@ -183,9 +214,55 @@ class Olama_Transportation_Family_Locations
             'map_url' => $maps_url,
             'duplicate_count' => $duplicate_count,
             'message' => $duplicate_count
-                ? __('Location saved for review. Another family uses the same coordinates.', 'olama-transportation')
-                : __('Location saved and marked for review.', 'olama-transportation'),
+                ? __('Location approved. Another family uses the same coordinates.', 'olama-transportation')
+                : __('Location saved and approved.', 'olama-transportation'),
         );
+    }
+
+    private static function ensure_default_planning_areas($student_years, $families, $stops, $study_year, $alternate_year)
+    {
+        global $wpdb;
+        $mappings = Olama_Transportation_DB::table('area_mappings');
+        $areas = Olama_Transportation_DB::table('major_areas');
+        $now = current_time('mysql', true);
+        $wpdb->query($wpdb->prepare(
+            "INSERT INTO {$stops}
+                (family_uid,oracle_family_id,address_text,area_text,major_area_id,area_assignment_source,source,verification_status,created_at,updated_at)
+             SELECT DISTINCT f.family_uid,f.oracle_family_id,COALESCE(NULLIF(f.family_address,''),f.address),f.trans_region_name,
+                    m.major_area_id,'core','planning_placeholder','needs_review',%s,%s
+             FROM {$student_years} sy
+             INNER JOIN {$families} f ON f.family_uid=sy.family_uid
+             INNER JOIN {$mappings} m ON m.oracle_region_id=f.trans_region_id
+             INNER JOIN {$areas} a ON a.id=m.major_area_id AND a.status='active'
+             LEFT JOIN {$stops} fs ON fs.family_uid=f.family_uid OR (fs.family_uid IS NULL AND fs.oracle_family_id=f.oracle_family_id)
+             WHERE sy.study_year IN (%s,%s) AND fs.id IS NULL",
+            $now,
+            $now,
+            $study_year,
+            $alternate_year
+        ));
+        if (class_exists('Olama_Transportation_Area_Sync')) {
+            Olama_Transportation_Area_Sync::backfill_family_stops(false);
+        }
+    }
+
+    private static function area_defaults()
+    {
+        global $wpdb;
+        $rows = $wpdb->get_results(
+            'SELECT m.oracle_region_id,m.oracle_region_name,m.major_area_id,a.name AS area_name FROM '
+            . Olama_Transportation_DB::table('area_mappings') . ' m INNER JOIN '
+            . Olama_Transportation_DB::table('major_areas') . " a ON a.id=m.major_area_id WHERE a.status='active'",
+            ARRAY_A
+        );
+        $defaults = array('regions' => array(), 'names' => array(), 'area_names' => array());
+        foreach ($rows as $row) {
+            $id = (int) $row['major_area_id'];
+            $defaults['regions'][(string) $row['oracle_region_id']] = $id;
+            $defaults['names'][(string) $row['oracle_region_name']] = $id;
+            $defaults['area_names'][$id] = (string) $row['area_name'];
+        }
+        return $defaults;
     }
 
     public static function parse_coordinates($input)

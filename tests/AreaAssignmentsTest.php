@@ -87,6 +87,8 @@ class Olama_Transportation_Area_Assignments_Test extends WP_UnitTestCase
         $row = Olama_Transportation_Repository::get_item('family-stops', $stop['id']);
         $this->assertSame($this->area_one, (int) $row['major_area_id']);
         $this->assertSame('manual', $row['area_assignment_source']);
+        $this->assertSame('approved', $row['verification_status']);
+        $this->assertNotEmpty($row['verified_at']);
     }
 
     public function test_family_without_location_can_be_classified_by_uid()
