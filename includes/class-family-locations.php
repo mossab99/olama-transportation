@@ -87,18 +87,30 @@ class Olama_Transportation_Family_Locations
         $search = trim(sanitize_text_field($args['search'] ?? ''));
         $area = sanitize_text_field((string) ($args['major_area_id'] ?? ''));
         $oracle_area = sanitize_text_field((string) ($args['oracle_area'] ?? 'all'));
+        $transportation = sanitize_key($args['transportation_status'] ?? 'all');
         $location = sanitize_key($args['location_status'] ?? 'all');
         $morning = sanitize_key($args['morning_status'] ?? 'all');
         $afternoon = sanitize_key($args['afternoon_status'] ?? 'all');
-        $missing_only = !empty($args['missing_locations']);
-        $filtered = array_values(array_filter($rows, function ($row) use ($search, $area, $oracle_area, $location, $morning, $afternoon, $missing_only) {
+        $missing = sanitize_key($args['missing_locations'] ?? 'all');
+        if ($transportation !== 'all' || in_array($missing, array('missing_subscribed', 'missing_not_subscribed'), true)) {
+            foreach ($rows as &$row) {
+                $row['is_transport_subscribed'] = self::is_transport_subscribed($row, $academic_year_id);
+            }
+            unset($row);
+        }
+        $filtered = array_values(array_filter($rows, function ($row) use ($search, $area, $oracle_area, $transportation, $location, $morning, $afternoon, $missing) {
             $has_location = $row['latitude'] !== null && $row['longitude'] !== null;
+            $subscribed = !empty($row['is_transport_subscribed']);
             $location_status = !$has_location ? 'missing_location' : sanitize_key($row['verification_status'] ?: 'invalid_location');
             if ($search !== '' && stripos($row['family_name'] . ' ' . $row['oracle_family_id'] . ' ' . ($row['mobile'] ?? ''), $search) === false) return false;
             if ($area === 'unassigned' && !empty($row['major_area_id'])) return false;
             if ($area !== '' && $area !== 'all' && $area !== 'unassigned' && (int) $row['major_area_id'] !== absint($area)) return false;
             if ($oracle_area !== 'all' && (string) $row['trans_region_id'] !== $oracle_area) return false;
-            if ($missing_only && $has_location) return false;
+            if ($transportation === 'subscribed' && !$subscribed) return false;
+            if ($transportation === 'not_subscribed' && $subscribed) return false;
+            if ($missing !== 'all' && $has_location) return false;
+            if ($missing === 'missing_subscribed' && !$subscribed) return false;
+            if ($missing === 'missing_not_subscribed' && $subscribed) return false;
             if ($location !== 'all' && $location_status !== $location) return false;
             if ($morning !== 'all' && sanitize_key($row['effective_morning']['assignment_status'] ?? 'missing_area') !== $morning) return false;
             if ($afternoon !== 'all' && sanitize_key($row['effective_afternoon']['assignment_status'] ?? 'missing_area') !== $afternoon) return false;
@@ -109,12 +121,12 @@ class Olama_Transportation_Family_Locations
         $total = count($filtered);
         $items = array_slice($filtered, ($page - 1) * $per_page, $per_page);
         foreach ($items as &$item) {
-            $transport_rows = olama_core()->transportation()->get_family($item['oracle_family_id'], Olama_Transportation_Bus::study_year($academic_year_id));
-            $item['is_transport_subscribed'] = count(array_filter($transport_rows, static function ($transport) {
-                return !isset($transport['is_active']) || $transport['is_active'] === null || (int) $transport['is_active'] === 1;
-            })) > 0;
+            if (!array_key_exists('is_transport_subscribed', $item)) {
+                $item['is_transport_subscribed'] = self::is_transport_subscribed($item, $academic_year_id);
+            }
         }
         unset($item);
+        self::attach_students($items, Olama_Transportation_Bus::study_year($academic_year_id));
         $oracle_areas = array();
         foreach ($rows as $row) {
             if ((string) $row['trans_region_id'] !== '') {
@@ -134,6 +146,55 @@ class Olama_Transportation_Family_Locations
                 'families_without_planning_areas' => count(array_filter($rows, function ($row) { return empty($row['major_area_id']); })),
             ),
         );
+    }
+
+    private static function is_transport_subscribed($family, $academic_year_id)
+    {
+        static $flags = array();
+        $year = Olama_Transportation_Bus::study_year($academic_year_id);
+        $key = $year . ':' . (string) $family['oracle_family_id'];
+        if (!array_key_exists($key, $flags)) {
+            $transport_rows = olama_core()->transportation()->get_family($family['oracle_family_id'], $year);
+            $flags[$key] = count(array_filter($transport_rows, static function ($transport) {
+                return !isset($transport['is_active']) || $transport['is_active'] === null || (int) $transport['is_active'] === 1;
+            })) > 0;
+        }
+        return $flags[$key];
+    }
+
+    private static function attach_students(&$items, $study_year)
+    {
+        global $wpdb;
+        if (!$items) {
+            return;
+        }
+        $study_year = preg_replace('/\s*([\/-])\s*/', '$1', (string) $study_year);
+        $family_uids = array_values(array_unique(array_column($items, 'family_uid')));
+        $placeholders = implode(',', array_fill(0, count($family_uids), '%s'));
+        $alternate_year = strpos($study_year, '/') !== false ? str_replace('/', '-', $study_year) : str_replace('-', '/', $study_year);
+        $params = array_merge($family_uids, array($study_year, $alternate_year));
+        $students = olama_core()->read_models()->table('students');
+        $student_years = olama_core()->read_models()->table('student_years');
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT sy.family_uid,sy.student_uid,s.student_name,sy.class_name,sy.section_name
+             FROM {$student_years} sy INNER JOIN {$students} s ON s.student_uid=sy.student_uid
+             WHERE sy.family_uid IN ({$placeholders}) AND sy.study_year IN (%s,%s)
+             ORDER BY sy.family_uid,s.student_name",
+            $params
+        ), ARRAY_A);
+        $by_family = array();
+        foreach ($rows as $row) {
+            $parts = preg_split('/\s+/u', trim((string) $row['student_name']));
+            $by_family[$row['family_uid']][] = array(
+                'first_name' => $parts[0] ?? (string) $row['student_name'],
+                'class_name' => (string) $row['class_name'],
+                'section_name' => (string) $row['section_name'],
+            );
+        }
+        foreach ($items as &$item) {
+            $item['students'] = $by_family[$item['family_uid']] ?? array();
+        }
+        unset($item);
     }
 
     public static function save($family_uid, $input, $notes = '')
