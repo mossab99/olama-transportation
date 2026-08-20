@@ -22,11 +22,19 @@
     function warning(label, count) { return count > 0 ? '<span class="olama-capacity-warning">⚠ ' + esc(label) + ': +' + count + '</span>' : ''; }
 
     function tripCard(trip) {
-        var bus = trip.bus_number ? 'Bus ' + esc(trip.bus_number) + ' · Slot ' + trip.bus_trip_number : 'Bus unassigned';
+        var hasBus = Number(trip.bus_id || 0) > 0, capacity = Number(trip.bus_capacity || 0), students = Number(trip.student_count || 0);
+        var capacityClass = trip.bus_excess ? ' is-over-capacity' : (hasBus ? ' is-within-capacity' : '');
+        var capacityNote = trip.bus_excess ? '+' + trip.bus_excess + ' over capacity' : (hasBus ? Math.max(0, capacity - students) + ' seats available' : 'Assign a bus to set capacity');
+        var areas = trip.area_names ? esc(trip.area_names) : '<em>No areas attached</em>';
         return '<article class="olama-trip-card ' + (trip.status === 'published' ? 'is-published' : 'is-draft') + '">' +
             '<div class="olama-trip-card-head"><div><strong>' + esc(trip.name) + '</strong><span class="olama-trip-status">' + esc(trip.status) + '</span></div><button type="button" class="button olama-open-trip" data-trip="' + trip.id + '">' + (trip.status === 'published' ? 'Review trip' : 'Open trip') + '</button></div>' +
-            '<div class="olama-trip-card-metrics"><span><b>' + trip.student_count + '</b> students</span><span><b>' + trip.family_count + '</b> families</span><span><b>' + trip.area_ids.length + '</b> areas</span></div>' +
-            '<p>' + bus + '</p><p>' + esc(trip.area_names || 'No areas attached') + '</p>' + warning('trip limit',trip.trip_excess) + warning('bus capacity',trip.bus_excess) + '</article>';
+            '<div class="olama-trip-card-facts">' +
+                '<div><span>Bus number</span><strong>' + (hasBus ? esc(trip.bus_number || '#' + trip.bus_id) : 'Unassigned') + '</strong><small>' + (hasBus ? 'Trip slot ' + trip.bus_trip_number : 'No bus selected') + '</small></div>' +
+                '<div><span>Students in trip</span><strong>' + students + '</strong><small>' + Number(trip.family_count || 0) + ' families</small></div>' +
+                '<div class="' + capacityClass + '"><span>Bus capacity</span><strong>' + (hasBus ? capacity : '—') + '</strong><small>' + capacityNote + '</small></div>' +
+            '</div>' +
+            '<div class="olama-trip-covered-areas"><span>Areas covered <b>' + (trip.area_ids || []).length + '</b></span><div>' + areas + '</div></div>' +
+            '<div class="olama-trip-card-warnings">' + warning('trip limit',trip.trip_excess) + warning('bus capacity',trip.bus_excess) + '</div></article>';
     }
     function render() {
         var trips = data.shared_trips || [];
@@ -34,9 +42,11 @@
         $('#olama-trip-board-summary').text(trips.length + ' trip' + (trips.length === 1 ? '' : 's'));
         var rows = (data.areas || []).map(function (area) {
             var assigned = area.shared_trips && area.shared_trips.length ? '<ul class="olama-area-trip-list">' + area.shared_trips.map(function(trip){return '<li><button type="button" class="button-link olama-open-trip" data-trip="'+trip.id+'">'+esc(trip.name)+'</button><small>'+trip.area_student_count+' students · '+esc(trip.bus_number ? 'Bus '+trip.bus_number : 'Bus unassigned')+'</small></li>';}).join('') + '</ul>' : '<em>Not attached to a trip.</em>';
-            return '<tr data-area="'+area.id+'"><td><span class="olama-area-swatch" style="background:'+esc(area.color)+'"></span><strong>'+esc(area.name)+'</strong><small>'+esc(area.code)+'</small></td><td><strong>'+area.student_count+'</strong></td><td><label><input class="areas-type" type="checkbox" '+(area.area_type==='main'?'checked':'')+'> Main area</label></td><td><input class="areas-color" type="color" value="'+esc(area.color||'#1a56db')+'"></td><td>'+assigned+'</td></tr>';
+            return '<tr data-area="'+area.id+'"><td class="olama-area-identity"><span class="olama-area-swatch" style="background:'+esc(area.color)+'"></span><strong>'+esc(area.name)+'</strong><small>'+esc(area.code)+'</small></td>'+
+                '<td><div class="olama-area-student-summary"><span><b>'+Number(area.student_count||0)+'</b>Total students</span><span class="is-assigned"><b>'+Number(area.assigned_student_count||0)+'</b>Assigned</span><span class="'+(Number(area.unassigned_student_count||0)>0?'is-unassigned':'is-complete')+'"><b>'+Number(area.unassigned_student_count||0)+'</b>Not assigned</span></div></td>'+
+                '<td>'+assigned+'</td><td><div class="olama-area-display-settings"><label><input class="areas-type" type="checkbox" '+(area.area_type==='main'?'checked':'')+'> Main area</label><label><span>Color</span><input class="areas-color" type="color" value="'+esc(area.color||'#1a56db')+'"></label></div></td></tr>';
         }).join('');
-        $('#areas-body').html(rows || '<tr><td colspan="5">No active Oracle areas found.</td></tr>');
+        $('#areas-body').html(rows || '<tr><td colspan="4">No active Oracle areas found.</td></tr>');
     }
     function load(message) {
         feedback('Loading…');

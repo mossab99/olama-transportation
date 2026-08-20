@@ -31,6 +31,8 @@ class Olama_Transportation_Areas_Workspace
             $area['area_type'] = in_array($area['area_type'] ?? '', array('main','secondary'), true) ? $area['area_type'] : 'secondary';
             $area['trips'] = $by_area[(int)$area['id']] ?? array();
             $area['shared_trips'] = $shared_by_area[(int)$area['id']] ?? array();
+            $area['assigned_student_count'] = array_sum(array_column($area['shared_trips'], 'area_student_count'));
+            $area['unassigned_student_count'] = max(0, (int)$area['student_count'] - $area['assigned_student_count']);
         }
         return array(
             'areas'=>$resolved['areas'], 'buses'=>self::available_buses(),

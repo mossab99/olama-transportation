@@ -151,6 +151,24 @@ class Olama_Transportation_Area_Assignments_Test extends WP_UnitTestCase
         $this->assertSame(array($this->area_one, $this->area_two), $listed['area_ids']);
     }
 
+    public function test_area_workspace_reports_assigned_and_unassigned_students()
+    {
+        $stop = $this->create_stop($this->area_one, 'manual', 'AREA-SUMMARY');
+        $this->add_demand($stop, 3);
+        $trip = $this->create_shared_trip('morning');
+        Olama_Transportation_Shared_Trips::save_areas($trip['id'], array($this->area_one));
+        $this->add_shared_member($trip['id'], $this->area_one, 1, $stop['family_uid']);
+
+        $overview = Olama_Transportation_Areas_Workspace::overview($this->year_id, 'morning');
+        $area = array_values(array_filter($overview['areas'], function ($candidate) {
+            return (int) $candidate['id'] === $this->area_one;
+        }))[0];
+
+        $this->assertSame(3, (int) $area['student_count']);
+        $this->assertSame(1, $area['assigned_student_count']);
+        $this->assertSame(2, $area['unassigned_student_count']);
+    }
+
     public function test_replacing_bus_preserves_trip_areas_and_students()
     {
         $trip = $this->create_shared_trip('morning');
