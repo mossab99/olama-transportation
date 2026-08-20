@@ -267,6 +267,7 @@ class Olama_Transportation_Admin
             ));
         }
         if ($tab === 'areas') {
+            $trip_companions = Olama_Transportation_Bus::get_available_companions();
             $this->enqueue_style('olama-leaflet', 'assets/vendor/leaflet/leaflet.css');
             wp_enqueue_script('olama-leaflet', OLAMA_TRANSPORTATION_URL . 'assets/vendor/leaflet/leaflet.js', array(), $this->asset_version(OLAMA_TRANSPORTATION_PATH . 'assets/vendor/leaflet/leaflet.js'), true);
             $script_path = OLAMA_TRANSPORTATION_PATH . 'assets/js/areas-workspace.js';
@@ -275,7 +276,7 @@ class Olama_Transportation_Admin
             wp_localize_script('olama-areas-workspace', 'olamaTripStaff', array(
                 'companions' => array_values(array_map(static function ($user) {
                     return array('id' => (int) $user->ID, 'name' => $user->display_name);
-                }, $companions)),
+                }, $trip_companions)),
             ));
         }
     }
