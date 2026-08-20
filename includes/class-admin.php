@@ -119,6 +119,12 @@ class Olama_Transportation_Admin
             return;
         }
 
+        // WordPress 7 enables automatic cross-document View Transitions in wp-admin.
+        // Repeated async rerenders in this workspace can legitimately skip one and
+        // Chromium reports that benign cancellation as an unhandled AbortError.
+        // This screen has its own modal/UI state and does not need page transitions.
+        wp_dequeue_style('wp-view-transitions-admin');
+
         $this->enqueue_style('olama-transportation-admin', 'assets/css/admin.css');
         wp_enqueue_style('jquery-ui-datepicker-css', 'https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css', array(), '1.13.2');
         wp_enqueue_script('jquery-ui-datepicker');
