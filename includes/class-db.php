@@ -29,7 +29,7 @@ class Olama_Transportation_DB
             planning_capacity smallint(5) UNSIGNED DEFAULT NULL,
             allow_multi_area tinyint(1) NOT NULL DEFAULT 0,
             main_area_id bigint(20) UNSIGNED DEFAULT NULL,
-            morning_trip_count tinyint(3) UNSIGNED NOT NULL DEFAULT 2,
+            morning_trip_count tinyint(3) UNSIGNED NOT NULL DEFAULT 3,
             afternoon_trip_count tinyint(3) UNSIGNED NOT NULL DEFAULT 3,
             driver_employee_id varchar(50) DEFAULT NULL,
             driver_source_name varchar(255) DEFAULT NULL,
@@ -501,6 +501,10 @@ class Olama_Transportation_DB
         if (!in_array('area_type', $columns($areas), true)) $wpdb->query("ALTER TABLE {$areas} ADD COLUMN area_type varchar(20) NOT NULL DEFAULT 'secondary'");
         if (!in_array('allow_multi_area', $columns($buses), true)) $wpdb->query("ALTER TABLE {$buses} ADD COLUMN allow_multi_area tinyint(1) NOT NULL DEFAULT 0");
         if (!in_array('main_area_id', $columns($buses), true)) $wpdb->query("ALTER TABLE {$buses} ADD COLUMN main_area_id bigint(20) UNSIGNED DEFAULT NULL");
+        $wpdb->query("ALTER TABLE {$buses} ALTER morning_trip_count SET DEFAULT 3");
+        $wpdb->query("ALTER TABLE {$buses} ALTER afternoon_trip_count SET DEFAULT 3");
+        $wpdb->query("UPDATE {$buses} SET morning_trip_count=3 WHERE morning_trip_count<3");
+        $wpdb->query("UPDATE {$buses} SET afternoon_trip_count=3 WHERE afternoon_trip_count<3");
         if (!in_array('arrival_time', $columns($assignments), true)) $wpdb->query("ALTER TABLE {$assignments} ADD COLUMN arrival_time time DEFAULT NULL");
         if (!in_array('departure_time', $columns($assignments), true)) $wpdb->query("ALTER TABLE {$assignments} ADD COLUMN departure_time time DEFAULT NULL");
         $indexes = $wpdb->get_col("SHOW INDEX FROM {$assignments}", 2);

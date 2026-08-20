@@ -54,7 +54,7 @@ class Olama_Transportation_Repository_Test extends WP_UnitTestCase
         );
     }
 
-    public function test_bus_trip_defaults_are_two_and_three()
+    public function test_bus_trip_defaults_are_three_arrivals_and_three_departures()
     {
         global $wpdb;
         $table = Olama_Transportation_DB::table('buses');
@@ -64,7 +64,7 @@ class Olama_Transportation_Repository_Test extends WP_UnitTestCase
             'passenger_capacity' => 20, 'status' => 'active', 'created_at' => $now, 'updated_at' => $now,
         ));
         $bus = Olama_Transportation_Bus::get_bus($wpdb->insert_id);
-        $this->assertSame(2, (int) $bus->morning_trip_count);
+        $this->assertSame(3, (int) $bus->morning_trip_count);
         $this->assertSame(3, (int) $bus->afternoon_trip_count);
     }
 

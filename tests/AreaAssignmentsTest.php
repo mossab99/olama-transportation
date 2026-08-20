@@ -192,6 +192,11 @@ class Olama_Transportation_Area_Assignments_Test extends WP_UnitTestCase
         $morning = Olama_Transportation_Shared_Trips::build_queue($morning['id']);
         $morning_queue = $morning['queue'];
         $this->assertSame('school', end($morning_queue)['node_type']);
+        $morning_family = array_values(array_filter($morning_queue, function ($node) {
+            return $node['node_type'] === 'family';
+        }))[0];
+        $this->assertSame($stop['oracle_family_id'], $morning_family['oracle_family_id']);
+        $this->assertSame(array('Student 1'), $morning_family['student_names']);
 
         $afternoon = $this->create_shared_trip('afternoon');
         $this->add_shared_member($afternoon['id'], $this->area_one, 2, $stop['family_uid']);

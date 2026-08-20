@@ -155,7 +155,7 @@ class Olama_Transportation_Bus
             'planning_capacity'   => intval($data['planning_capacity'] ?? $existing_bus->passenger_capacity),
             'allow_multi_area'    => !empty($data['allow_multi_area']) ? 1 : 0,
             'main_area_id'        => !empty($data['main_area_id']) ? intval($data['main_area_id']) : null,
-            'morning_trip_count'  => max(1, min(10, intval($data['morning_trip_count'] ?? $existing_bus->morning_trip_count ?? 2))),
+            'morning_trip_count'  => max(1, min(10, intval($data['morning_trip_count'] ?? $existing_bus->morning_trip_count ?? 3))),
             'afternoon_trip_count'=> max(1, min(10, intval($data['afternoon_trip_count'] ?? $existing_bus->afternoon_trip_count ?? 3))),
             'driver_user_id'      => !empty($data['driver_user_id']) ? intval($data['driver_user_id']) : null,
             'companion_user_id'   => !empty($data['companion_user_id']) ? intval($data['companion_user_id']) : null,

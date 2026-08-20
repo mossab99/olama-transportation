@@ -140,6 +140,17 @@ class Olama_Transportation_Shared_Trips
             'SELECT * FROM ' . Olama_Transportation_DB::table('shared_trip_queue') . ' WHERE trip_id=%d ORDER BY queue_position,id',
             $trip['id']
         ), ARRAY_A);
+        $student_names_by_family = array();
+        foreach ($trip['students'] as $student) {
+            $family_uid = (string) $student['family_uid'];
+            $student_names_by_family[$family_uid][] = (string) $student['student_name'];
+        }
+        foreach ($trip['queue'] as &$node) {
+            $node['student_names'] = $node['node_type'] === 'family'
+                ? array_values(array_unique($student_names_by_family[(string) $node['family_uid']] ?? array()))
+                : array();
+        }
+        unset($node);
         $trip['student_count'] = count($trip['students']);
         $trip['family_count'] = count(array_unique(array_column($trip['students'], 'family_uid')));
         $trip['area_count'] = count($trip['areas']);
@@ -171,19 +182,29 @@ class Olama_Transportation_Shared_Trips
             "SELECT DISTINCT s.id student_id,s.student_uid,s.oracle_student_id,s.student_name,sy.class_name grade_name,sy.section_name,
                     f.family_uid,f.oracle_family_id,COALESCE(NULLIF(f.sponsor_full_name,''),NULLIF(f.father_name,''),f.oracle_family_id) family_name,
                     IF(current_member.id IS NULL,0,1) selected,
-                    other_trip.id assigned_trip_id,other_trip.name assigned_trip_name
+                    (SELECT other_trip.id FROM {$members} other_member
+                     INNER JOIN {$trips} other_trip ON other_trip.id=other_member.trip_id
+                     WHERE other_member.student_uid=s.student_uid AND other_trip.id<>%d
+                       AND other_trip.academic_year_id=%d AND other_trip.direction=%s
+                       AND other_trip.status IN ('draft','published') ORDER BY other_trip.id LIMIT 1) assigned_trip_id,
+                    (SELECT other_trip.name FROM {$members} other_member
+                     INNER JOIN {$trips} other_trip ON other_trip.id=other_member.trip_id
+                     WHERE other_member.student_uid=s.student_uid AND other_trip.id<>%d
+                       AND other_trip.academic_year_id=%d AND other_trip.direction=%s
+                       AND other_trip.status IN ('draft','published') ORDER BY other_trip.id LIMIT 1) assigned_trip_name
              FROM {$student_years} sy INNER JOIN {$students} s ON s.student_uid=sy.student_uid
              INNER JOIN {$families} f ON f.family_uid=sy.family_uid
              INNER JOIN {$stops} fs ON fs.family_uid=f.family_uid OR (fs.family_uid IS NULL AND fs.oracle_family_id=f.oracle_family_id)
              LEFT JOIN {$members} current_member ON current_member.trip_id=%d AND current_member.student_uid=s.student_uid
-             LEFT JOIN {$members} other_member ON other_member.student_uid=s.student_uid AND other_member.trip_id<>%d
-             LEFT JOIN {$trips} other_trip ON other_trip.id=other_member.trip_id AND other_trip.academic_year_id=%d AND other_trip.direction=%s AND other_trip.status IN ('draft','published')
              WHERE sy.study_year IN (%s,%s) AND fs.major_area_id=%d
              ORDER BY sy.class_name,sy.section_name,s.student_name",
             $trip['id'],
+            $trip['academic_year_id'],
+            $trip['direction'],
             $trip['id'],
             $trip['academic_year_id'],
             $trip['direction'],
+            $trip['id'],
             $study_year,
             $alternate_year,
             $area_id
@@ -536,16 +557,19 @@ class Olama_Transportation_Shared_Trips
     private static function validate_bus_slot($trip, $bus_id, $slot)
     {
         global $wpdb;
-        if (!$bus_id || !$slot) return new WP_Error('missing_bus_slot', __('Select a bus and trip slot.', 'olama-transportation'), array('status' => 400));
+        $trip_label = $trip['direction'] === 'morning'
+            ? __('arrival trip (حضور)', 'olama-transportation')
+            : __('departure trip (عودة)', 'olama-transportation');
+        if (!$bus_id || !$slot) return new WP_Error('missing_bus_slot', sprintf(__('Select a bus and %s.', 'olama-transportation'), $trip_label), array('status' => 400));
         $bus = $wpdb->get_row($wpdb->prepare('SELECT * FROM ' . Olama_Transportation_DB::table('buses') . ' WHERE id=%d AND status=%s', $bus_id, 'active'), ARRAY_A);
         $limit_field = $trip['direction'] === 'morning' ? 'morning_trip_count' : 'afternoon_trip_count';
-        if (!$bus || $slot > (int) $bus[$limit_field]) return new WP_Error('invalid_bus_slot', __('The selected bus does not provide that trip slot.', 'olama-transportation'), array('status' => 400));
+        if (!$bus || $slot > (int) $bus[$limit_field]) return new WP_Error('invalid_bus_slot', sprintf(__('The selected bus does not provide that %s number.', 'olama-transportation'), $trip_label), array('status' => 400));
         $table = Olama_Transportation_DB::table('shared_trips');
         $other = $wpdb->get_var($wpdb->prepare(
             "SELECT id FROM {$table} WHERE academic_year_id=%d AND direction=%s AND bus_id=%d AND bus_trip_number=%d AND id<>%d AND status IN ('draft','published') LIMIT 1",
             $trip['academic_year_id'], $trip['direction'], $bus_id, $slot, $trip['id']
         ));
-        return $other ? new WP_Error('bus_slot_occupied', __('This bus trip slot is already assigned to another trip.', 'olama-transportation'), array('status' => 409)) : true;
+        return $other ? new WP_Error('bus_slot_occupied', sprintf(__('This bus %s is already assigned to another trip.', 'olama-transportation'), $trip_label), array('status' => 409)) : true;
     }
 
     private static function normalize_trip($row)

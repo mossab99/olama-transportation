@@ -56,7 +56,7 @@ $translate = array('Olama_School_Helpers', 'translate');
                 </div>
                 <div class="olama-area-filters">
                     <label><?php echo esc_html($translate('Academic Year')); ?><select id="areas-year"><?php foreach ($years as $year): ?><option value="<?php echo intval($year->id); ?>" <?php selected($selected_year_id,$year->id); ?>><?php echo esc_html($year->year_name); ?></option><?php endforeach; ?></select></label>
-                    <label><?php echo esc_html($translate('Direction')); ?><select id="areas-direction"><option value="morning"><?php echo esc_html($translate('Morning / Arrival')); ?></option><option value="afternoon"><?php echo esc_html($translate('Afternoon / Departure')); ?></option></select></label>
+                    <label><?php echo esc_html($translate('Direction')); ?><select id="areas-direction"><option value="morning"><?php echo esc_html($translate('Arrival / حضور')); ?></option><option value="afternoon"><?php echo esc_html($translate('Departure / عودة')); ?></option></select></label>
                 </div>
                 <div id="areas-feedback" class="olama-operation-result" aria-live="polite"></div>
                 <section class="olama-trip-board"><div class="olama-trip-board-head"><h3><?php echo esc_html($translate('Trips')); ?></h3><span id="olama-trip-board-summary"></span></div><div id="olama-trip-board-list" class="olama-trip-board-list"></div></section>
@@ -463,8 +463,8 @@ $translate = array('Olama_School_Helpers', 'translate');
                                 <p><label><?php echo esc_html($translate('Driver License Number')); ?></label><input type="text" id="bus-driver-license-number" readonly class="widefat" /></p>
                                 <p><label><?php echo esc_html($translate('Registered Capacity')); ?></label><input type="number" id="bus-capacity" readonly class="widefat" /></p>
                                 <p><label><?php echo esc_html($translate('Planning Capacity')); ?></label><input type="number" name="planning_capacity" id="bus-planning-capacity" required class="widefat" min="1" /></p>
-                                <p><label><?php echo esc_html($translate('Morning Trips')); ?></label><input type="number" name="morning_trip_count" id="bus-morning-trip-count" required class="widefat" min="1" max="10" value="2" /></p>
-                                <p><label><?php echo esc_html($translate('Afternoon Trips')); ?></label><input type="number" name="afternoon_trip_count" id="bus-afternoon-trip-count" required class="widefat" min="1" max="10" value="3" /></p>
+                                <p><label><?php echo esc_html($translate('Arrival Trips / حضور')); ?></label><input type="number" name="morning_trip_count" id="bus-morning-trip-count" required class="widefat" min="1" max="10" value="3" /></p>
+                                <p><label><?php echo esc_html($translate('Departure Trips / عودة')); ?></label><input type="number" name="afternoon_trip_count" id="bus-afternoon-trip-count" required class="widefat" min="1" max="10" value="3" /></p>
                                 <p id="bus-core-capacity-warning" class="description" style="display:none"><?php echo esc_html($translate('Core capacity is missing. The positive value entered here is a local planning override.')); ?></p>
                                 <p><label><?php echo esc_html($translate('License Expiry')); ?></label><input type="text" id="bus-license-expiry" readonly class="widefat" /></p>
                                 <p><label><?php echo esc_html($translate('Driver')); ?></label><select name="driver_user_id" id="bus-driver-id" class="widefat"><option value=""><?php echo esc_html($translate('Select Driver')); ?></option><?php foreach ($drivers as $driver): ?><option value="<?php echo intval($driver->ID); ?>"><?php echo esc_html($driver->display_name); ?></option><?php endforeach; ?></select></p>
