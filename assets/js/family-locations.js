@@ -2,7 +2,7 @@
     'use strict';
     var root = document.getElementById('olama-family-locations-app');
     if (!root || typeof olamaFamilyLocations === 'undefined') return;
-    var cfg = olamaFamilyLocations, i18n = cfg.i18n, state = {page:1, controller:null, items:[], selected:new Set()};
+    var cfg = olamaFamilyLocations, i18n = cfg.i18n, state = {page:1, controller:null, items:[], data:null, selected:new Set()};
     function el(id){return document.getElementById(id);} function txt(v){return document.createTextNode(v==null?'':String(v));}
     function option(select,value,label){var o=document.createElement('option');o.value=value;o.appendChild(txt(label));select.appendChild(o);}
     function request(path, options) {
@@ -18,10 +18,10 @@
             afternoon_status:el('family-location-afternoon-filter').value,missing_locations:el('family-location-missing-filter').value});
         return p.toString();
     }
-    function load(message) {
+    function load(message,preserveTable) {
         if(state.controller)state.controller.abort(); state.controller=new AbortController();
-        el('family-locations-body').innerHTML='<tr><td colspan="7">'+i18n.loading+'</td></tr>';
-        return request('family-locations?'+query(),{signal:state.controller.signal}).then(function(data){state.items=data.items;render(data);if(message)feedback(message,'success');}).catch(function(error){if(error.name==='AbortError')return;empty(error.message||i18n.networkError,true);});
+        if(!preserveTable)el('family-locations-body').innerHTML='<tr><td colspan="7">'+i18n.loading+'</td></tr>';
+        return request('family-locations?'+query(),{signal:state.controller.signal}).then(function(data){state.data=data;state.items=data.items;render(data);if(message)feedback(message,'success');}).catch(function(error){if(error.name==='AbortError')return;if(preserveTable)feedback(error.message||i18n.networkError,'error');else empty(error.message||i18n.networkError,true);});
     }
     function feedback(message,type){var box=el('family-location-feedback');box.textContent=message;box.className='olama-operation-result is-'+type;}
     function statusText(status){var map={assigned:i18n.assigned,missing_area:i18n.missingArea,area_not_allocated:i18n.areaNotAllocated,capacity_problem:i18n.capacityProblem};return map[status]||String(status||i18n.missingArea).replace(/_/g,' ');}
@@ -34,7 +34,7 @@
     function saveArea(item,row,clear) {
         var select=row.querySelector('.family-planning-area'), area=clear?0:parseInt(select.value||0,10), buttons=row.querySelectorAll('button');buttons.forEach(function(b){b.disabled=true;});rowMessage(item.family_uid,i18n.saving,'loading');
         request('family-locations/by-family/'+encodeURIComponent(item.family_uid)+'/area',{method:'POST',body:JSON.stringify({academic_year_id:parseInt(el('family-locations-year').value,10),major_area_id:area})})
-            .then(function(){return load(i18n.saved);}).catch(function(error){rowMessage(item.family_uid,error.message||i18n.saveFailed,'error');buttons.forEach(function(b){b.disabled=false;});});
+            .then(function(result){var current=state.items.find(function(candidate){return candidate.family_uid===item.family_uid;})||item;current.major_area_id=result.major_area_id||null;current.is_area_override=Number(current.major_area_id||0)!==Number(current.default_major_area_id||0);if(state.data)render(state.data);feedback(i18n.saved,'success');load(null,true);}).catch(function(error){rowMessage(item.family_uid,error.message||i18n.saveFailed,'error');buttons.forEach(function(b){b.disabled=false;});});
     }
     function render(data) {
         var body=el('family-locations-body');body.innerHTML='';
@@ -52,7 +52,7 @@
         if(!data.items.length)empty(i18n.noMatches,false);
         syncOracleAreas(data.oracle_areas||[]);
         var m=data.metrics;el('family-metric-registered').textContent=m.registered_transportation_families;el('family-metric-valid').textContent=m.families_with_valid_coordinates;el('family-metric-missing').textContent=m.families_missing_coordinates;el('family-metric-with-area').textContent=m.families_with_planning_areas;el('family-metric-without-area').textContent=m.families_without_planning_areas;
-        var p=data.pagination;el('family-results-count').textContent=p.total+' results';el('family-page-label').textContent=p.page+' / '+p.total_pages;el('family-page-prev').disabled=p.page<=1;el('family-page-next').disabled=p.page>=p.total_pages;selectedCount();
+        var p=data.pagination,totalText=p.total+' '+i18n.families+' · '+p.student_total+' '+i18n.students;el('family-filter-totals').textContent=totalText;el('family-results-count').textContent=totalText;el('family-page-label').textContent=p.page+' / '+p.total_pages;el('family-page-prev').disabled=p.page<=1;el('family-page-next').disabled=p.page>=p.total_pages;selectedCount();
     }
     function empty(message,error){el('family-locations-body').innerHTML='';var r=el('family-locations-body').insertRow(),c=r.insertCell();c.colSpan=7;c.className='olama-empty-state'+(error?' is-error':'');c.appendChild(txt(message));}
     function syncOracleAreas(areas){var select=el('family-location-oracle-area-filter'),current=select.value;if(select.options.length===1){areas.forEach(function(area){option(select,area.id,area.name);});select.value=current;}}

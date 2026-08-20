@@ -246,11 +246,11 @@ class Olama_Transportation_Admin
                     'phone'=>Olama_School_Helpers::translate('Phone'),'source'=>Olama_School_Helpers::translate('Source'),'assignmentSource'=>Olama_School_Helpers::translate('Assignment Source'),
                     'assignedAt'=>Olama_School_Helpers::translate('Assigned At'),'notes'=>Olama_School_Helpers::translate('Notes'),'unassigned'=>Olama_School_Helpers::translate('Unassigned'),
                     'fatherMobile'=>Olama_School_Helpers::translate('Father Mobile'),'motherMobile'=>Olama_School_Helpers::translate('Mother Mobile'),
-                    'students'=>Olama_School_Helpers::translate('students'),'transportSubscribed'=>'مشترك بالمواصلات',
+                    'students'=>Olama_School_Helpers::translate('students'),'families'=>Olama_School_Helpers::translate('families'),'transportSubscribed'=>'مشترك بالمواصلات',
                     'transportNotSubscribed'=>'غير مشترك بالمواصلات','transportStatus'=>Olama_School_Helpers::translate('Transportation Status'),
                     'oracleArea'=>Olama_School_Helpers::translate('Oracle Area'),'planningArea'=>Olama_School_Helpers::translate('Planning Area'),
                     'address'=>Olama_School_Helpers::translate('Address'),'noAddress'=>Olama_School_Helpers::translate('No address available'),
-                    'manualOverride'=>Olama_School_Helpers::translate('Manual override — differs from Oracle Area'),
+                    'manualOverride'=>Olama_School_Helpers::translate('Planning Area differs from Oracle Area'),
                     'networkError'=>Olama_School_Helpers::translate('The request failed. Check the connection and try again.'),
                 ),
             ));

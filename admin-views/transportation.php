@@ -224,10 +224,11 @@ $translate = array('Olama_School_Helpers', 'translate');
                     <button type="button" id="family-location-reset" class="button"><?php echo esc_html($translate('Reset Filters')); ?></button>
                 </div>
                 <div class="olama-bulk-area-bar">
+                    <strong id="family-filter-totals" class="olama-filter-totals" aria-live="polite">0 <?php echo esc_html($translate('families')); ?> · 0 <?php echo esc_html($translate('students')); ?></strong>
                     <strong id="family-selected-count">0 <?php echo esc_html($translate('selected')); ?></strong>
                     <label for="family-location-bulk-area"><?php echo esc_html($translate('Bulk Planning Area')); ?><select id="family-location-bulk-area"><option value=""><?php echo esc_html($translate('Clear area assignment')); ?></option><?php foreach ($areas as $area): if (($area['status'] ?? '') !== 'active') continue; ?><option value="<?php echo intval($area['id']); ?>"><?php echo esc_html($area['name']); ?></option><?php endforeach; ?></select></label>
                     <button type="button" id="family-location-bulk-save" class="button button-primary"><?php echo esc_html($translate('Apply to selected')); ?></button>
-                    <span class="olama-override-legend"><span aria-hidden="true"></span><?php echo esc_html($translate('Red rows have a manual Planning Area override.')); ?></span>
+                    <span class="olama-override-legend"><span aria-hidden="true"></span><?php echo esc_html($translate('Red rows have a Planning Area different from their Oracle Area.')); ?></span>
                 </div>
                 <div class="olama-family-location-table-wrap">
                     <table class="wp-list-table widefat striped olama-family-location-table">

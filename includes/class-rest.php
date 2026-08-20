@@ -337,7 +337,7 @@ class Olama_Transportation_REST
     {
         $input = $request->get_json_params() ?: $request->get_params();
         return $this->respond(Olama_Transportation_Family_Area_Assignments::assign_family(
-            $request['family_uid'], $input['major_area_id'] ?? 0, $input['academic_year_id'] ?? 0
+            $request['family_uid'], $input['major_area_id'] ?? 0, $input['academic_year_id'] ?? 0, false
         ));
     }
 
@@ -346,7 +346,7 @@ class Olama_Transportation_REST
         $input = $request->get_json_params() ?: $request->get_params();
         if (!empty($input['family_uids'])) {
             return $this->respond(Olama_Transportation_Family_Area_Assignments::bulk_assign_families(
-                $input['family_uids'], $input['major_area_id'] ?? 0, $input['academic_year_id'] ?? 0
+                $input['family_uids'], $input['major_area_id'] ?? 0, $input['academic_year_id'] ?? 0, false
             ));
         }
         return $this->respond(Olama_Transportation_Family_Area_Assignments::bulk_assign($input['family_stop_ids'] ?? array(), $input['major_area_id'] ?? 0));

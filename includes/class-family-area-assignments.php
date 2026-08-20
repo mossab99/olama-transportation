@@ -6,9 +6,9 @@ if (!defined('ABSPATH')) {
 
 class Olama_Transportation_Family_Area_Assignments
 {
-    public static function assign_family($family_uid, $major_area_id, $academic_year_id = 0)
+    public static function assign_family($family_uid, $major_area_id, $academic_year_id = 0, $include_effective = true)
     {
-        $result = self::bulk_assign_families(array($family_uid), $major_area_id, $academic_year_id);
+        $result = self::bulk_assign_families(array($family_uid), $major_area_id, $academic_year_id, $include_effective);
         if (is_wp_error($result)) {
             return $result;
         }
@@ -16,7 +16,7 @@ class Olama_Transportation_Family_Area_Assignments
     }
 
     /** Assign Core families, creating location-less transportation placeholders atomically. */
-    public static function bulk_assign_families($family_uids, $major_area_id, $academic_year_id = 0)
+    public static function bulk_assign_families($family_uids, $major_area_id, $academic_year_id = 0, $include_effective = true)
     {
         global $wpdb;
         $uids = array_values(array_unique(array_filter(array_map('sanitize_text_field', (array) $family_uids))));
@@ -114,7 +114,9 @@ class Olama_Transportation_Family_Area_Assignments
         return array(
             'updated' => count($families), 'failed' => 0, 'family_stop_ids' => $stop_ids,
             'major_area_id' => $area_id ?: null, 'family_stops' => $rows,
-            'effective_assignments' => self::effective_for_stops($stop_ids, absint($academic_year_id)),
+            'effective_assignments' => $include_effective
+                ? self::effective_for_stops($stop_ids, absint($academic_year_id))
+                : array(),
         );
     }
 

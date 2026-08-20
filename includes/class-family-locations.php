@@ -74,8 +74,7 @@ class Olama_Transportation_Family_Locations
                 $row['major_area_id'] = $default_area_id;
                 $row['major_area_name'] = $area_defaults['area_names'][$default_area_id] ?? '';
             }
-            $row['is_area_override'] = ($row['area_assignment_source'] ?? '') === 'manual'
-                && (int) ($row['major_area_id'] ?? 0) !== (int) $default_area_id;
+            $row['is_area_override'] = (int) ($row['major_area_id'] ?? 0) !== (int) $default_area_id;
         }
         unset($row);
         return $rows;
@@ -119,6 +118,9 @@ class Olama_Transportation_Family_Locations
         $per_page = min(100, max(20, absint($args['per_page'] ?? 20)));
         $page = max(1, absint($args['page'] ?? 1));
         $total = count($filtered);
+        $student_total = array_sum(array_map(static function ($row) {
+            return (int) ($row['registered_students'] ?? 0);
+        }, $filtered));
         $items = array_slice($filtered, ($page - 1) * $per_page, $per_page);
         foreach ($items as &$item) {
             if (!array_key_exists('is_transport_subscribed', $item)) {
@@ -137,7 +139,13 @@ class Olama_Transportation_Family_Locations
         return array(
             'items' => $items,
             'oracle_areas' => array_map(static function ($id, $name) { return array('id' => $id, 'name' => $name); }, array_keys($oracle_areas), array_values($oracle_areas)),
-            'pagination' => array('page' => $page, 'per_page' => $per_page, 'total' => $total, 'total_pages' => max(1, (int) ceil($total / $per_page))),
+            'pagination' => array(
+                'page' => $page,
+                'per_page' => $per_page,
+                'total' => $total,
+                'student_total' => $student_total,
+                'total_pages' => max(1, (int) ceil($total / $per_page)),
+            ),
             'metrics' => array(
                 'registered_transportation_families' => count($rows),
                 'families_with_valid_coordinates' => count(array_filter($rows, function ($row) { return $row['latitude'] !== null && $row['longitude'] !== null; })),
