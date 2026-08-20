@@ -25,6 +25,8 @@ class Olama_Transportation_Shared_Trips
         $rows = $wpdb->get_results($wpdb->prepare(
             "SELECT t.*,b.bus_number,
                     COALESCE(NULLIF(b.planning_capacity,0),b.passenger_capacity,0) bus_capacity,
+                    COALESCE(NULLIF(driver.display_name,''),NULLIF(b.driver_source_name,''),'') driver_name,
+                    COALESCE(NULLIF(companion.display_name,''),'') companion_name,
                     COUNT(DISTINCT s.student_uid) student_count,COUNT(DISTINCT s.family_uid) family_count,
                     GROUP_CONCAT(DISTINCT ta.major_area_id ORDER BY ta.major_area_id) area_ids,
                     GROUP_CONCAT(DISTINCT a.name ORDER BY a.name SEPARATOR ', ') area_names
@@ -32,6 +34,8 @@ class Olama_Transportation_Shared_Trips
              LEFT JOIN {$members} s ON s.trip_id=t.id
              LEFT JOIN {$trip_areas} ta ON ta.trip_id=t.id
              LEFT JOIN {$buses} b ON b.id=t.bus_id
+             LEFT JOIN {$wpdb->users} driver ON driver.ID=b.driver_user_id
+             LEFT JOIN {$wpdb->users} companion ON companion.ID=t.companion_user_id
              LEFT JOIN {$areas} a ON a.id=ta.major_area_id
              WHERE t.academic_year_id=%d AND t.direction=%s AND t.status IN ('draft','published')
              GROUP BY t.id ORDER BY t.status='draft' DESC,t.id",
@@ -119,8 +123,14 @@ class Olama_Transportation_Shared_Trips
         $trips = Olama_Transportation_DB::table('shared_trips');
         $buses = Olama_Transportation_DB::table('buses');
         $trip = $wpdb->get_row($wpdb->prepare(
-            "SELECT t.*,b.bus_number,COALESCE(NULLIF(b.planning_capacity,0),b.passenger_capacity,0) bus_capacity
-             FROM {$trips} t LEFT JOIN {$buses} b ON b.id=t.bus_id WHERE t.id=%d",
+            "SELECT t.*,b.bus_number,b.driver_user_id,
+                    COALESCE(NULLIF(b.planning_capacity,0),b.passenger_capacity,0) bus_capacity,
+                    COALESCE(NULLIF(driver.display_name,''),NULLIF(b.driver_source_name,''),'') driver_name,
+                    COALESCE(NULLIF(companion.display_name,''),'') companion_name
+             FROM {$trips} t LEFT JOIN {$buses} b ON b.id=t.bus_id
+             LEFT JOIN {$wpdb->users} driver ON driver.ID=b.driver_user_id
+             LEFT JOIN {$wpdb->users} companion ON companion.ID=t.companion_user_id
+             WHERE t.id=%d",
             absint($id)
         ), ARRAY_A);
         if (!$trip) {
@@ -341,6 +351,16 @@ class Olama_Transportation_Shared_Trips
         }
         if (array_key_exists('arrival_time', $data)) $record['arrival_time'] = self::time($data['arrival_time']);
         if (array_key_exists('departure_time', $data)) $record['departure_time'] = self::time($data['departure_time']);
+        if (array_key_exists('companion_user_id', $data)) {
+            $companion_id = absint($data['companion_user_id']);
+            if ($companion_id) {
+                $eligible = array_map(static function ($user) { return (int) $user->ID; }, Olama_Transportation_Bus::get_available_companions());
+                if (!in_array($companion_id, $eligible, true)) {
+                    return new WP_Error('ineligible_companion', __('Select an active eligible companion.', 'olama-transportation'), array('status' => 400));
+                }
+            }
+            $record['companion_user_id'] = $companion_id ?: null;
+        }
         if (array_key_exists('bus_id', $data) || array_key_exists('bus_trip_number', $data)) {
             $bus_id = absint($data['bus_id'] ?? $trip['bus_id']);
             $slot = absint($data['bus_trip_number'] ?? $trip['bus_trip_number']);
@@ -428,6 +448,7 @@ class Olama_Transportation_Shared_Trips
         if (is_wp_error($trip)) return $trip;
         $trip = self::get($trip['id']);
         if (!$trip['student_count']) return new WP_Error('empty_shared_trip', __('Select at least one student.', 'olama-transportation'), array('status' => 400));
+        if (!$trip['companion_user_id']) return new WP_Error('missing_trip_companion', __('Select a companion before publishing the trip.', 'olama-transportation'), array('status' => 400));
         $slot = self::validate_bus_slot($trip, $trip['bus_id'], $trip['bus_trip_number']);
         if (is_wp_error($slot)) return $slot;
         if ($trip['trip_excess'] && !$trip['trip_limit_acknowledged']) return new WP_Error('trip_limit_acknowledgement_required', __('Acknowledge the trip planning-limit warning before publishing.', 'olama-transportation'), array('status' => 409));
@@ -546,6 +567,76 @@ class Olama_Transportation_Shared_Trips
         return array('deleted' => true, 'id' => $trip_id);
     }
 
+    /** Build the private, print-only CR80 badge projection for a trip. */
+    public static function badges($id)
+    {
+        global $wpdb;
+        $trip = self::get($id);
+        if (!$trip) return new WP_Error('shared_trip_not_found', __('Trip was not found.', 'olama-transportation'), array('status' => 404));
+
+        $families = olama_core()->read_models()->table('families');
+        $student_years = olama_core()->read_models()->table('student_years');
+        $students = olama_core()->read_models()->table('students');
+        $stops = Olama_Transportation_DB::table('family_stops');
+        $areas = Olama_Transportation_DB::table('major_areas');
+        $members = Olama_Transportation_DB::table('shared_trip_students');
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT m.*,f.father_name,f.mother_name,f.father_mobile,f.mother_mobile,
+                    COALESCE(NULLIF(fs.address_text,''),NULLIF(f.family_address,''),f.address,'') full_address,
+                    fs.latitude,fs.longitude,a.name area_name
+             FROM {$members} m INNER JOIN {$families} f ON f.family_uid=m.family_uid
+             LEFT JOIN {$stops} fs ON fs.id=(SELECT preferred_stop.id FROM {$stops} preferred_stop
+                 WHERE preferred_stop.family_uid=f.family_uid OR (preferred_stop.family_uid IS NULL AND preferred_stop.oracle_family_id=f.oracle_family_id)
+                 ORDER BY preferred_stop.family_uid IS NULL,preferred_stop.id LIMIT 1)
+             LEFT JOIN {$areas} a ON a.id=m.major_area_id WHERE m.trip_id=%d
+             ORDER BY m.grade_name,m.section_name,m.student_name",
+            $trip['id']
+        ), ARRAY_A);
+        $study_year = preg_replace('/\s*([\/-])\s*/', '$1', Olama_Transportation_Bus::study_year($trip['academic_year_id']));
+        $alternate_year = strpos($study_year, '/') !== false ? str_replace('/', '-', $study_year) : str_replace('-', '/', $study_year);
+        $sibling_cache = array();
+        foreach ($rows as &$row) {
+            $family_uid = (string) $row['family_uid'];
+            if (!isset($sibling_cache[$family_uid])) {
+                $sibling_cache[$family_uid] = $wpdb->get_results($wpdb->prepare(
+                    "SELECT s.student_uid,s.student_name,sy.class_name grade_name,sy.section_name
+                     FROM {$student_years} sy INNER JOIN {$students} s ON s.student_uid=sy.student_uid
+                     WHERE sy.family_uid=%s AND sy.study_year IN (%s,%s) ORDER BY sy.class_name,sy.section_name,s.student_name",
+                    $family_uid, $study_year, $alternate_year
+                ), ARRAY_A);
+            }
+            $row['siblings'] = array_values(array_filter($sibling_cache[$family_uid], static function ($sibling) use ($row) {
+                return (string) $sibling['student_uid'] !== (string) $row['student_uid'];
+            }));
+            $row['maps_url'] = ($row['latitude'] !== null && $row['longitude'] !== null)
+                ? 'https://www.google.com/maps?q=' . rawurlencode($row['latitude'] . ',' . $row['longitude']) : '';
+        }
+        unset($row);
+        return array(
+            'trip' => array(
+                'id'=>$trip['id'],'name'=>$trip['name'],'direction'=>$trip['direction'],'bus_number'=>$trip['bus_number'],
+                'bus_trip_number'=>$trip['bus_trip_number'],'driver_name'=>$trip['driver_name'],'driver_phone'=>self::staff_phone($trip['driver_user_id']),
+                'companion_name'=>$trip['companion_name'],'companion_phone'=>self::staff_phone($trip['companion_user_id']),
+            ),
+            'students' => $rows,
+        );
+    }
+
+    private static function staff_phone($user_id)
+    {
+        $user_id = absint($user_id);
+        if (!$user_id) return '';
+        if (function_exists('olama_core') && method_exists(olama_core(), 'staff')) {
+            $profile = olama_core()->staff()->get($user_id);
+            if ($profile && !empty($profile['phone_number'])) return sanitize_text_field((string) $profile['phone_number']);
+        }
+        foreach (array('phone_number','phone','mobile','billing_phone') as $key) {
+            $value = sanitize_text_field((string) get_user_meta($user_id, $key, true));
+            if ($value !== '') return $value;
+        }
+        return '';
+    }
+
     private static function editable($id)
     {
         $trip = self::get($id);
@@ -574,7 +665,7 @@ class Olama_Transportation_Shared_Trips
 
     private static function normalize_trip($row)
     {
-        foreach (array('id','academic_year_id','planning_limit','bus_id','bus_trip_number','bus_capacity','student_count','family_count') as $key) {
+        foreach (array('id','academic_year_id','planning_limit','bus_id','bus_trip_number','companion_user_id','driver_user_id','bus_capacity','student_count','family_count') as $key) {
             $row[$key] = (int) ($row[$key] ?? 0);
         }
         $row['area_ids'] = empty($row['area_ids']) ? array() : array_values(array_map('intval', explode(',', $row['area_ids'])));

@@ -111,6 +111,24 @@ class Olama_Transportation_Area_Assignments_Test extends WP_UnitTestCase
         ));
     }
 
+    public function test_shared_trip_owns_companion_and_exposes_bus_driver_names()
+    {
+        global $wpdb;
+        $driver = self::factory()->user->create(array('display_name' => 'Test Driver'));
+        $companion = self::factory()->user->create(array('display_name' => 'Test Companion'));
+        $wpdb->update(Olama_Transportation_DB::table('buses'), array('driver_user_id' => $driver), array('id' => $this->bus_id));
+        $trip = $this->create_shared_trip();
+        $wpdb->update(Olama_Transportation_DB::table('shared_trips'), array(
+            'bus_id' => $this->bus_id, 'bus_trip_number' => 1, 'companion_user_id' => $companion,
+        ), array('id' => $trip['id']));
+
+        $saved = Olama_Transportation_Shared_Trips::get($trip['id']);
+        $this->assertSame($companion, $saved['companion_user_id']);
+        $this->assertSame('Test Driver', $saved['driver_name']);
+        $this->assertSame('Test Companion', $saved['companion_name']);
+        $this->assertContains('companion_user_id', $wpdb->get_col('SHOW COLUMNS FROM ' . Olama_Transportation_DB::table('shared_trips'), 0));
+    }
+
     public function test_family_stop_can_be_manually_assigned_to_active_area()
     {
         $stop = $this->create_stop();

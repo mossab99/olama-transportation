@@ -209,6 +209,7 @@ class Olama_Transportation_DB
             planning_limit smallint(5) UNSIGNED NOT NULL DEFAULT 35,
             bus_id bigint(20) UNSIGNED DEFAULT NULL,
             bus_trip_number tinyint(3) UNSIGNED DEFAULT NULL,
+            companion_user_id bigint(20) UNSIGNED DEFAULT NULL,
             arrival_time time DEFAULT NULL,
             departure_time time DEFAULT NULL,
             trip_limit_acknowledged tinyint(1) NOT NULL DEFAULT 0,
@@ -222,7 +223,8 @@ class Olama_Transportation_DB
             updated_at datetime NOT NULL,
             PRIMARY KEY (id),
             KEY year_direction (academic_year_id,direction,status),
-            KEY bus_slot (academic_year_id,direction,bus_id,bus_trip_number,status)
+            KEY bus_slot (academic_year_id,direction,bus_id,bus_trip_number,status),
+            KEY companion_user_id (companion_user_id)
         ) $cc;");
 
         dbDelta("CREATE TABLE {$p}olama_transport_shared_trip_areas (
@@ -446,6 +448,7 @@ class Olama_Transportation_DB
         self::allow_missing_family_coordinates();
         self::upgrade_area_assignment_schema();
         self::upgrade_areas_workspace_schema();
+        self::upgrade_trip_staff_schema();
         self::ensure_legacy_assignment_links();
     }
 
@@ -535,6 +538,24 @@ class Olama_Transportation_DB
             "UPDATE {$table} SET license_expiry_date = NULL
              WHERE license_expiry_date = '0000-00-00'"
         );
+    }
+
+    /** Move operational companion ownership from the vehicle to each trip. */
+    private static function upgrade_trip_staff_schema()
+    {
+        global $wpdb;
+        $trips = self::table('shared_trips');
+        $buses = self::table('buses');
+        $columns = $wpdb->get_col("SHOW COLUMNS FROM {$trips}", 0);
+        if (!in_array('companion_user_id', $columns, true)) {
+            $wpdb->query("ALTER TABLE {$trips} ADD COLUMN companion_user_id bigint(20) UNSIGNED DEFAULT NULL AFTER bus_trip_number");
+            // A bus's former companion is the safest initial value for its existing trips.
+            $wpdb->query("UPDATE {$trips} t INNER JOIN {$buses} b ON b.id=t.bus_id SET t.companion_user_id=b.companion_user_id WHERE t.companion_user_id IS NULL AND b.companion_user_id IS NOT NULL");
+        }
+        $indexes = $wpdb->get_col("SHOW INDEX FROM {$trips}", 2);
+        if (!in_array('companion_user_id', $indexes, true)) {
+            $wpdb->query("ALTER TABLE {$trips} ADD KEY companion_user_id (companion_user_id)");
+        }
     }
 
     private static function ensure_legacy_assignment_links()

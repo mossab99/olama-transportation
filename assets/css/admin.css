@@ -1,6 +1,7 @@
 .olama-transportation-wrap .olama-tab-content {
     margin-top: 20px;
 }
+.olama-trip-staff{display:flex;flex-wrap:wrap;gap:8px 22px;padding:10px 12px;border-top:1px solid #e7e9ee;color:#50575e;font-size:12px}.olama-trip-staff b{color:#1d2327}
 
 .olama-transportation-wrap .olama-card {
     background: #fff;

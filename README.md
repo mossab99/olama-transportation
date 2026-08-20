@@ -1,6 +1,6 @@
 # Olama Transportation 2.4.1
 
-School transportation planning for the Olama ecosystem. Version 2.4.1 completes the area-based workflow with location-independent family classification, focused administration screens, server-confirmed preview-before-save, pagination, and concurrency conflict handling.
+School transportation planning for the Olama ecosystem. Version 2.8.0 adds trip-owned companions, bus-derived drivers on trip cards, and private CR80 student transportation badge printing.
 
 ## Effective planning model
 
@@ -39,6 +39,7 @@ Oracle ERP is read only through Olama Oracle Sync and Olama Core. Transportation
 Namespace: `/wp-json/olama-transportation/v1`.
 
 - `GET|POST /planning/area-allocations`
+- `GET /areas-workspace/shared-trips/{id}/badges`
 - `POST /planning/area-allocations/preview`
 - `DELETE /planning/area-allocations/{id}`
 - `POST /family-locations/{id}/area`

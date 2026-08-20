@@ -61,9 +61,6 @@
             $('#bus-afternoon-trip-count').val(bus.afternoon_trip_count || 3);
             $('#bus-license-expiry').val(bus.license_expiry_date ? olamaFormatDate(bus.license_expiry_date) : '');
             $('#bus-driver-id').val(bus.driver_user_id);
-            $('#bus-companion-id').val(bus.companion_user_id);
-            $('#bus-main-area-id').val(bus.main_area_id);
-            $('#bus-allow-multi-area').prop('checked', Number(bus.allow_multi_area || 0) === 1);
             $('#bus-engine-capacity').val(bus.engine_capacity);
             $('#bus-fuel-type').val(bus.fuel_type);
             $('#bus-status').val(bus.status);

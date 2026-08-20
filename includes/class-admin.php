@@ -89,7 +89,6 @@ class Olama_Transportation_Admin
 
         if ($active_tab === 'buses') {
             $drivers = Olama_Transportation_Bus::get_available_drivers();
-            $companions = Olama_Transportation_Bus::get_available_companions();
             $areas = Olama_Transportation_Repository::list_items('areas', array('per_page' => 500, 'status' => 'active'));
         } elseif ($active_tab === 'assignments') {
             $selected_bus_id = isset($_GET['bus_id']) ? intval($_GET['bus_id']) : 0;
@@ -101,6 +100,9 @@ class Olama_Transportation_Admin
             if ($active_tab === 'import') {
                 $areas = Olama_Transportation_Area_Sync::selectable_areas();
             }
+        }
+        if ($active_tab === 'areas') {
+            $companions = Olama_Transportation_Bus::get_available_companions();
         }
         if ($active_tab === 'routes') {
             $routes = Olama_Transportation_Routes::list_routes(array('academic_year_id' => $selected_year_id));
@@ -262,7 +264,13 @@ class Olama_Transportation_Admin
             $this->enqueue_style('olama-leaflet', 'assets/vendor/leaflet/leaflet.css');
             wp_enqueue_script('olama-leaflet', OLAMA_TRANSPORTATION_URL . 'assets/vendor/leaflet/leaflet.js', array(), $this->asset_version(OLAMA_TRANSPORTATION_PATH . 'assets/vendor/leaflet/leaflet.js'), true);
             $script_path = OLAMA_TRANSPORTATION_PATH . 'assets/js/areas-workspace.js';
-            wp_enqueue_script('olama-areas-workspace', OLAMA_TRANSPORTATION_URL . 'assets/js/areas-workspace.js', array('jquery','olama-leaflet'), $this->asset_version($script_path), true);
+            wp_enqueue_script('olama-qrcode', 'https://cdn.jsdelivr.net/npm/qrcode-generator@2.0.4/dist/qrcode.js', array(), '2.0.4', true);
+            wp_enqueue_script('olama-areas-workspace', OLAMA_TRANSPORTATION_URL . 'assets/js/areas-workspace.js', array('jquery','olama-leaflet','olama-qrcode'), $this->asset_version($script_path), true);
+            wp_localize_script('olama-areas-workspace', 'olamaTripStaff', array(
+                'companions' => array_values(array_map(static function ($user) {
+                    return array('id' => (int) $user->ID, 'name' => $user->display_name);
+                }, $companions)),
+            ));
         }
     }
 

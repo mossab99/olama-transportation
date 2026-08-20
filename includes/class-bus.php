@@ -153,12 +153,9 @@ class Olama_Transportation_Bus
         }
         $bus_data = array(
             'planning_capacity'   => intval($data['planning_capacity'] ?? $existing_bus->passenger_capacity),
-            'allow_multi_area'    => !empty($data['allow_multi_area']) ? 1 : 0,
-            'main_area_id'        => !empty($data['main_area_id']) ? intval($data['main_area_id']) : null,
             'morning_trip_count'  => max(1, min(10, intval($data['morning_trip_count'] ?? $existing_bus->morning_trip_count ?? 3))),
             'afternoon_trip_count'=> max(1, min(10, intval($data['afternoon_trip_count'] ?? $existing_bus->afternoon_trip_count ?? 3))),
             'driver_user_id'      => !empty($data['driver_user_id']) ? intval($data['driver_user_id']) : null,
-            'companion_user_id'   => !empty($data['companion_user_id']) ? intval($data['companion_user_id']) : null,
             'accessibility'       => !empty($data['accessibility']) ? 1 : 0,
             'tracking_provider'   => sanitize_key($data['tracking_provider'] ?? $existing_bus->tracking_provider),
             'tracking_device_id'  => sanitize_text_field($data['tracking_device_id'] ?? $existing_bus->tracking_device_id),
@@ -171,17 +168,11 @@ class Olama_Transportation_Bus
                 ? __('Planning capacity must be greater than zero and cannot exceed the registered Core capacity.', 'olama-transportation')
                 : __('Enter a positive local planning capacity because Core capacity is missing.', 'olama-transportation'));
         }
-        if ($bus_data['main_area_id']) {
-            $area = $wpdb->get_var($wpdb->prepare('SELECT id FROM ' . Olama_Transportation_DB::table('major_areas') . " WHERE id=%d AND status='active'", $bus_data['main_area_id']));
-            if (!$area) return new WP_Error('invalid_main_area', __('Select an active Oracle area for this bus.', 'olama-transportation'));
-        }
-        foreach (array('driver_user_id' => self::get_available_drivers(), 'companion_user_id' => self::get_available_companions()) as $field => $eligible) {
+        foreach (array('driver_user_id' => self::get_available_drivers()) as $field => $eligible) {
             if (!$bus_data[$field]) continue;
             $ids = array_map(function ($user) { return (int) $user->ID; }, $eligible);
             if (!in_array((int) $bus_data[$field], $ids, true)) {
-                return new WP_Error('ineligible_staff_member', $field === 'driver_user_id'
-                    ? __('Only active employees with the سائق title can be assigned as drivers.', 'olama-transportation')
-                    : __('Only active teacher employees can be assigned as support administrators.', 'olama-transportation'));
+                return new WP_Error('ineligible_staff_member', __('Only active employees with the سائق title can be assigned as drivers.', 'olama-transportation'));
             }
         }
 

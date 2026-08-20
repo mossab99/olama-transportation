@@ -402,7 +402,6 @@ $translate = array('Olama_School_Helpers', 'translate');
                             <th><?php echo esc_html($translate('Morning Trips')); ?></th>
                             <th><?php echo esc_html($translate('Afternoon Trips')); ?></th>
                             <th><?php echo esc_html($translate('Driver')); ?></th>
-                            <th><?php echo esc_html($translate('Companion')); ?></th>
                             <th><?php echo esc_html($translate('License Expiry')); ?></th>
                             <th><?php echo esc_html($translate('Status')); ?></th>
                             <th><?php echo esc_html($translate('Actions')); ?></th>
@@ -423,11 +422,6 @@ $translate = array('Olama_School_Helpers', 'translate');
                                         echo $bus->driver_name ? esc_html($bus->driver_name) : '-';
                                         ?>
                                     </td>
-                                    <td>
-                                        <?php
-                                        echo $bus->companion_name ? esc_html($bus->companion_name) : '-';
-                                        ?>
-                                    </td>
                                     <td><?php echo $bus->license_expiry_date ? esc_html(Olama_School_Helpers::format_date($bus->license_expiry_date)) : '-'; ?></td>
                                     <td>
                                         <span class="olama-status-pill olama-status-<?php echo esc_attr($bus->status); ?>">
@@ -442,7 +436,7 @@ $translate = array('Olama_School_Helpers', 'translate');
                                 </tr>
                             <?php endforeach; ?>
                         <?php else: ?>
-                            <tr><td colspan="11"><?php echo esc_html($translate('No data')); ?></td></tr>
+                            <tr><td colspan="10"><?php echo esc_html($translate('No data')); ?></td></tr>
                         <?php endif; ?>
                     </tbody>
                 </table>
@@ -468,9 +462,6 @@ $translate = array('Olama_School_Helpers', 'translate');
                                 <p id="bus-core-capacity-warning" class="description" style="display:none"><?php echo esc_html($translate('Core capacity is missing. The positive value entered here is a local planning override.')); ?></p>
                                 <p><label><?php echo esc_html($translate('License Expiry')); ?></label><input type="text" id="bus-license-expiry" readonly class="widefat" /></p>
                                 <p><label><?php echo esc_html($translate('Driver')); ?></label><select name="driver_user_id" id="bus-driver-id" class="widefat"><option value=""><?php echo esc_html($translate('Select Driver')); ?></option><?php foreach ($drivers as $driver): ?><option value="<?php echo intval($driver->ID); ?>"><?php echo esc_html($driver->display_name); ?></option><?php endforeach; ?></select></p>
-                                <p><label><?php echo esc_html($translate('Companion')); ?></label><select name="companion_user_id" id="bus-companion-id" class="widefat"><option value=""><?php echo esc_html($translate('Select Companion')); ?></option><?php foreach ($companions as $companion): ?><option value="<?php echo intval($companion->ID); ?>"><?php echo esc_html($companion->display_name); ?></option><?php endforeach; ?></select></p>
-                                <p><label><?php echo esc_html($translate('Main Oracle Area')); ?></label><select name="main_area_id" id="bus-main-area-id" class="widefat"><option value=""><?php echo esc_html($translate('Select Area')); ?></option><?php foreach ($areas as $area): ?><option value="<?php echo intval($area['id']); ?>"><?php echo esc_html($area['name']); ?></option><?php endforeach; ?></select></p>
-                                <p><label><input type="checkbox" name="allow_multi_area" id="bus-allow-multi-area" value="1" /> <?php echo esc_html($translate('Can serve multiple areas')); ?></label></p>
                                 <p><label><?php echo esc_html($translate('Engine Capacity')); ?></label><input type="text" id="bus-engine-capacity" readonly class="widefat" /></p>
                                 <p><label><?php echo esc_html($translate('Fuel Type')); ?></label><input type="text" id="bus-fuel-type" readonly class="widefat" /></p>
                             </div>

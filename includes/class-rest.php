@@ -86,6 +86,9 @@ class Olama_Transportation_REST
         register_rest_route(self::NS, '/areas-workspace/shared-trips/(?P<id>\d+)/queue', array(
             array('methods'=>WP_REST_Server::CREATABLE,'callback'=>array($this,'build_shared_trip_queue'),'permission_callback'=>array($this,'can_manage')),
         ));
+        register_rest_route(self::NS, '/areas-workspace/shared-trips/(?P<id>\d+)/badges', array(
+            array('methods'=>WP_REST_Server::READABLE,'callback'=>array($this,'shared_trip_badges'),'permission_callback'=>array($this,'can_view')),
+        ));
         register_rest_route(self::NS, '/areas-workspace/shared-trips/(?P<id>\d+)/publish', array(
             array('methods'=>WP_REST_Server::CREATABLE,'callback'=>array($this,'publish_shared_trip'),'permission_callback'=>array($this,'can_approve')),
         ));
@@ -282,6 +285,7 @@ class Olama_Transportation_REST
     public function update_shared_trip(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Shared_Trips::update($request['id'], $request->get_json_params() ?: $request->get_params())); }
     public function delete_shared_trip_draft(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Shared_Trips::delete_draft($request['id'])); }
     public function shared_trip_candidates(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Shared_Trips::candidates($request['id'], $request->get_param('major_area_id'))); }
+    public function shared_trip_badges(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Shared_Trips::badges($request['id'])); }
     public function save_shared_trip_students(WP_REST_Request $request) { $input=$request->get_json_params() ?: $request->get_params(); return $this->respond(Olama_Transportation_Shared_Trips::save_area_students($request['id'], $input['major_area_id'] ?? 0, $input['student_uids'] ?? array())); }
     public function save_shared_trip_areas(WP_REST_Request $request) { $input=$request->get_json_params() ?: $request->get_params(); return $this->respond(Olama_Transportation_Shared_Trips::save_areas($request['id'], $input['area_ids'] ?? array())); }
     public function build_shared_trip_queue(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Shared_Trips::build_queue($request['id'])); }

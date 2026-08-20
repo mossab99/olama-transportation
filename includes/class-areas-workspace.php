@@ -68,10 +68,6 @@ class Olama_Transportation_Areas_Workspace
         $capacity = $bus_row ? ((int)$bus_row['planning_capacity'] > 0 ? (int)$bus_row['planning_capacity'] : (int)$bus_row['passenger_capacity']) : 0;
         if (!$bus_row || $capacity < 1 || $number > (int)$bus_row[$direction.'_trip_count']) return new WP_Error('invalid_bus_trip', __('The selected active bus does not provide this trip number or has no usable capacity.', 'olama-transportation'), array('status'=>400));
         $assignments=Olama_Transportation_DB::table('area_bus_assignments');
-        if (empty($bus_row['allow_multi_area'])) {
-            $other=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$assignments} WHERE academic_year_id=%d AND direction=%s AND bus_id=%d AND major_area_id<>%d AND status='active'",$year,$direction,$bus,$area));
-            if ($other) return new WP_Error('bus_area_restricted', __('This bus is already assigned to another area. Enable “Can serve multiple areas” in Bus details to override.', 'olama-transportation'), array('status'=>409));
-        }
         $now=current_time('mysql',true);
         $record=array('academic_year_id'=>$year,'major_area_id'=>$area,'direction'=>$direction,'bus_id'=>$bus,'trip_number'=>$number,'arrival_time'=>self::time($data['arrival_time']??''),'departure_time'=>self::time($data['departure_time']??''),'notes'=>sanitize_textarea_field($data['notes']??''),'status'=>'active','created_by'=>get_current_user_id()?:null,'updated_by'=>get_current_user_id()?:null,'created_at'=>$now,'updated_at'=>$now);
         if (!$wpdb->insert($assignments,$record)) return new WP_Error('trip_save_failed',$wpdb->last_error ?: __('Could not create the trip.', 'olama-transportation'),array('status'=>500));
@@ -111,7 +107,7 @@ class Olama_Transportation_Areas_Workspace
 
     private static function available_buses(){
         global $wpdb;
-        $rows = $wpdb->get_results('SELECT id,bus_number,passenger_capacity,planning_capacity,allow_multi_area,main_area_id,morning_trip_count,afternoon_trip_count FROM '.Olama_Transportation_DB::table('buses')." WHERE status='active' ORDER BY bus_number", ARRAY_A);
+        $rows = $wpdb->get_results('SELECT id,bus_number,passenger_capacity,planning_capacity,morning_trip_count,afternoon_trip_count FROM '.Olama_Transportation_DB::table('buses')." WHERE status='active' ORDER BY bus_number", ARRAY_A);
         $buses = array();
         foreach ($rows as $bus) {
             $bus['passenger_capacity'] = (int) $bus['passenger_capacity'];
