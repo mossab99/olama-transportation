@@ -98,6 +98,9 @@ class Olama_Transportation_Admin
             $summary = Olama_Transportation_Planning::report_summary($selected_year_id);
             $areas = Olama_Transportation_Repository::list_items('areas', array('per_page' => 500));
             $family_stops = Olama_Transportation_Repository::list_items('family-stops', array('per_page' => 100));
+            if ($active_tab === 'import') {
+                $areas = Olama_Transportation_Area_Sync::selectable_areas();
+            }
         }
         if ($active_tab === 'routes') {
             $routes = Olama_Transportation_Routes::list_routes(array('academic_year_id' => $selected_year_id));
@@ -230,7 +233,7 @@ class Olama_Transportation_Admin
             wp_localize_script('olama-family-locations', 'olamaFamilyLocations', array(
                 'restUrl' => esc_url_raw(rest_url('olama-transportation/v1/')), 'restNonce' => wp_create_nonce('wp_rest'),
                 'canManage' => Olama_School_Permissions::can('olama_manage_transport_buses'),
-                'areas' => array_values(array_map(function ($area) { return array('id'=>(int)$area['id'],'name'=>$area['name']); }, array_filter(Olama_Transportation_Repository::list_items('areas', array('per_page'=>500)), function ($area) { return $area['status']==='active'; }))),
+                'areas' => array_values(array_map(function ($area) { return array('id'=>(int)$area['id'],'name'=>$area['name']); }, Olama_Transportation_Area_Sync::selectable_areas())),
                 'i18n' => array(
                     'loading'=>Olama_School_Helpers::translate('Loading…'),'saved'=>Olama_School_Helpers::translate('Saved.'),'saveFailed'=>Olama_School_Helpers::translate('Save failed.'),
                     'unsaved'=>Olama_School_Helpers::translate('Unsaved changes'),'saving'=>Olama_School_Helpers::translate('Saving…'),'saveArea'=>Olama_School_Helpers::translate('Save Area'),

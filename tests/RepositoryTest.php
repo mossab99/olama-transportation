@@ -153,6 +153,31 @@ class Olama_Transportation_Repository_Test extends WP_UnitTestCase
         $this->assertSame(2, (int) $wpdb->get_var("SELECT COUNT(*) FROM {$areas} WHERE name = 'Shared Oracle label' AND status = 'active'"));
     }
 
+    public function test_selectable_planning_areas_match_active_oracle_mappings()
+    {
+        global $wpdb;
+        $areas = Olama_Transportation_DB::table('major_areas');
+        $mappings = Olama_Transportation_DB::table('area_mappings');
+        $now = current_time('mysql', true);
+
+        $wpdb->insert($areas, array('name' => 'Legacy local label', 'code' => 'ORACLE-CHOICE', 'status' => 'active', 'created_at' => $now, 'updated_at' => $now));
+        $mapped_id = (int) $wpdb->insert_id;
+        $wpdb->insert($mappings, array('oracle_region_id' => 'ORA-CHOICE', 'oracle_region_name' => 'Oracle label', 'major_area_id' => $mapped_id, 'created_at' => $now, 'updated_at' => $now));
+
+        $wpdb->insert($areas, array('name' => 'Local only', 'code' => 'LOCAL-ONLY', 'status' => 'active', 'created_at' => $now, 'updated_at' => $now));
+        $local_id = (int) $wpdb->insert_id;
+
+        $choices = Olama_Transportation_Area_Sync::selectable_areas();
+        $by_id = array();
+        foreach ($choices as $choice) {
+            $by_id[(int) $choice['id']] = $choice;
+        }
+
+        $this->assertArrayHasKey($mapped_id, $by_id);
+        $this->assertSame('Oracle label', $by_id[$mapped_id]['name']);
+        $this->assertArrayNotHasKey($local_id, $by_id);
+    }
+
     public function test_map_data_lists_an_area_once_when_it_has_multiple_oracle_mappings()
     {
         global $wpdb;

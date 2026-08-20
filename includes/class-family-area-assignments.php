@@ -36,9 +36,15 @@ class Olama_Transportation_Family_Area_Assignments
             return new WP_Error('core_family_not_found', __('One or more selected families no longer exist in Olama Core. No changes were saved.', 'olama-transportation'), array('status' => 404));
         }
         if ($area_id) {
-            $area = $wpdb->get_row($wpdb->prepare("SELECT id,status FROM {$areas} WHERE id=%d", $area_id), ARRAY_A);
+            $mappings = Olama_Transportation_DB::table('area_mappings');
+            $area = $wpdb->get_row($wpdb->prepare(
+                "SELECT a.id,a.status FROM {$areas} a
+                 INNER JOIN {$mappings} m ON m.major_area_id=a.id
+                 WHERE a.id=%d AND a.status='active' LIMIT 1",
+                $area_id
+            ), ARRAY_A);
             if (!$area || $area['status'] !== 'active') {
-                return new WP_Error('invalid_planning_area', __('The planning area does not exist or is inactive.', 'olama-transportation'), array('status' => 400));
+                return new WP_Error('invalid_planning_area', __('Select an active Planning Area from the Oracle Area list.', 'olama-transportation'), array('status' => 400));
             }
         }
 
@@ -49,7 +55,12 @@ class Olama_Transportation_Family_Area_Assignments
         $stop_ids = array();
         try {
             if ($area_id) {
-                $locked_area = $wpdb->get_row($wpdb->prepare("SELECT id,status FROM {$areas} WHERE id=%d FOR UPDATE", $area_id), ARRAY_A);
+                $locked_area = $wpdb->get_row($wpdb->prepare(
+                    "SELECT a.id,a.status FROM {$areas} a
+                     INNER JOIN " . Olama_Transportation_DB::table('area_mappings') . " m ON m.major_area_id=a.id
+                     WHERE a.id=%d AND a.status='active' LIMIT 1 FOR UPDATE",
+                    $area_id
+                ), ARRAY_A);
                 if (!$locked_area || $locked_area['status'] !== 'active') {
                     throw new RuntimeException(__('The planning area became unavailable. No changes were saved.', 'olama-transportation'));
                 }
@@ -134,12 +145,14 @@ class Olama_Transportation_Family_Area_Assignments
             return new WP_Error('missing_family_stops', __('Select at least one family location.', 'olama-transportation'), array('status' => 400));
         }
         if ($area_id) {
+            $mappings = Olama_Transportation_DB::table('area_mappings');
             $area = $wpdb->get_row($wpdb->prepare(
-                'SELECT id,name,status FROM ' . Olama_Transportation_DB::table('major_areas') . ' WHERE id=%d',
+                'SELECT a.id,a.name,a.status FROM ' . Olama_Transportation_DB::table('major_areas') . ' a '
+                . "INNER JOIN {$mappings} m ON m.major_area_id=a.id WHERE a.id=%d AND a.status='active' LIMIT 1",
                 $area_id
             ), ARRAY_A);
             if (!$area || $area['status'] !== 'active') {
-                return new WP_Error('invalid_planning_area', __('The planning area does not exist or is inactive.', 'olama-transportation'), array('status' => 400));
+                return new WP_Error('invalid_planning_area', __('Select an active Planning Area from the Oracle Area list.', 'olama-transportation'), array('status' => 400));
             }
         }
         $table = Olama_Transportation_DB::table('family_stops');
@@ -155,7 +168,8 @@ class Olama_Transportation_Family_Area_Assignments
         try {
             if ($area_id) {
                 $locked_area = $wpdb->get_row($wpdb->prepare(
-                    'SELECT id,status FROM ' . Olama_Transportation_DB::table('major_areas') . ' WHERE id=%d FOR UPDATE',
+                    'SELECT a.id,a.status FROM ' . Olama_Transportation_DB::table('major_areas') . ' a '
+                    . 'INNER JOIN ' . Olama_Transportation_DB::table('area_mappings') . " m ON m.major_area_id=a.id WHERE a.id=%d AND a.status='active' LIMIT 1 FOR UPDATE",
                     $area_id
                 ), ARRAY_A);
                 if (!$locked_area || $locked_area['status'] !== 'active') {

@@ -22,14 +22,21 @@ class Olama_Transportation_Area_Assignments_Test extends WP_UnitTestCase
         $this->bus_id = $this->create_bus(20, 0, 2, 3);
     }
 
-    private function create_area($name, $status = 'active')
+    private function create_area($name, $status = 'active', $mapped = true)
     {
         global $wpdb;
         $now = current_time('mysql', true);
         $wpdb->insert(Olama_Transportation_DB::table('major_areas'), array(
             'name' => $name, 'code' => strtoupper(str_replace(' ', '-', $name)) . '-' . wp_generate_password(4, false), 'status' => $status, 'created_at' => $now, 'updated_at' => $now,
         ));
-        return (int) $wpdb->insert_id;
+        $area_id = (int) $wpdb->insert_id;
+        if ($mapped) {
+            $wpdb->insert(Olama_Transportation_DB::table('area_mappings'), array(
+                'oracle_region_id' => 'REGION-' . wp_generate_uuid4(), 'oracle_region_name' => $name,
+                'major_area_id' => $area_id, 'created_at' => $now, 'updated_at' => $now,
+            ));
+        }
+        return $area_id;
     }
 
     private function create_bus($capacity, $planning = 0, $morning = 2, $afternoon = 3, $status = 'active')
@@ -265,6 +272,17 @@ class Olama_Transportation_Area_Assignments_Test extends WP_UnitTestCase
     public function test_missing_area_is_rejected()
     {
         $this->assertWPError(Olama_Transportation_Family_Area_Assignments::assign($this->create_stop()['id'], 999999));
+    }
+
+    public function test_local_only_area_is_rejected_for_family_assignment()
+    {
+        $result = Olama_Transportation_Family_Area_Assignments::assign(
+            $this->create_stop()['id'],
+            $this->create_area('Local Only', 'active', false)
+        );
+
+        $this->assertWPError($result);
+        $this->assertSame('invalid_planning_area', $result->get_error_code());
     }
 
     public function test_clearing_family_area_preserves_coordinates()

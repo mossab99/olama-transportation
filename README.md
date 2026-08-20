@@ -14,7 +14,7 @@ The active relationship is:
 
 ## Planning workflow
 
-1. In **Family Locations**, select an active local Planning Area per family or use the atomic bulk action. This works even before coordinates exist: Transportation creates a nullable location placeholder without inventing a map point. Oracle Area remains read-only Core data.
+1. In **Family Locations**, select a Planning Area from the active Oracle Area value set per family or use the atomic bulk action. The assignment is stored locally, so an administrator can correct a family's Planning Area without changing its read-only Oracle Area. This works even before coordinates exist: Transportation creates a nullable location placeholder without inventing a map point.
 2. Add or update the family pickup coordinates when available; this preserves the Planning Area and its audit metadata.
 3. In **Area Planning**, select academic year and direction, then allocate each Planning Area to an active bus and valid direction-specific trip number.
 4. Review the server-confirmed capacity preview and save. The map displays effective area/bus-trip allocation and never determines membership.

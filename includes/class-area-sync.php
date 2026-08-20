@@ -6,6 +6,33 @@ if (!defined('ABSPATH')) {
 
 class Olama_Transportation_Area_Sync
 {
+    /**
+     * Return the Planning Area choices backed by the active Oracle region list.
+     *
+     * A Planning Area remains a local assignment, but family corrections must
+     * choose from the same values supplied by Oracle. Legacy local-only areas
+     * may remain in the database for historical reporting; they are not valid
+     * choices in the family location workspace.
+     */
+    public static function selectable_areas()
+    {
+        global $wpdb;
+
+        $areas = Olama_Transportation_DB::table('major_areas');
+        $mappings = Olama_Transportation_DB::table('area_mappings');
+        return $wpdb->get_results(
+            "SELECT a.id,
+                    COALESCE(NULLIF(m.oracle_region_name, ''), a.name) AS name,
+                    a.code, a.color, a.status,
+                    m.oracle_region_id, m.oracle_region_name
+             FROM {$mappings} m
+             INNER JOIN {$areas} a ON a.id = m.major_area_id
+             WHERE a.status = 'active'
+             ORDER BY name ASC, m.oracle_region_id ASC",
+            ARRAY_A
+        );
+    }
+
     public static function refresh_from_core()
     {
         global $wpdb;
