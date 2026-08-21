@@ -43,8 +43,13 @@ class Olama_Transportation_Area_Sync
 
         $areas = Olama_Transportation_DB::table('major_areas');
         $mappings = Olama_Transportation_DB::table('area_mappings');
-        // The planner must only project regions that Oracle currently marks active.
-        $rows = olama_core()->transport_master()->get_regions(true);
+        // Read the Core mirror explicitly, then apply the active flag here so
+        // the transportation mapping cannot depend on a stale filtered query.
+        // This also keeps inactive Oracle regions out of every selector.
+        $rows = array_values(array_filter(
+            olama_core()->transport_master()->get_regions(false),
+            array(__CLASS__, 'is_active_core_region')
+        ));
         $now = current_time('mysql', true);
         $seen = array();
         $summary = array('core_regions' => count($rows), 'created' => 0, 'mappings_created' => 0, 'updated' => 0, 'deactivated' => 0, 'duplicates' => 0, 'backfilled' => 0);
@@ -279,6 +284,19 @@ class Olama_Transportation_Area_Sync
     {
         $name = sanitize_text_field((string) $name);
         return preg_replace('/[\s\p{Z}]+/u', ' ', trim($name));
+    }
+
+    private static function is_active_core_region($row)
+    {
+        if (!is_array($row)) return false;
+        foreach (array('is_active', 'active', 'region_is_active', 'region_active', 'is_active_name', 'active_name', 'status', 'status_name') as $key) {
+            if (!array_key_exists($key, $row) || $row[$key] === '' || $row[$key] === null) continue;
+            $value = strtolower(trim((string) $row[$key]));
+            return in_array($value, array('1', 'true', 'yes', 'y', 'active', 'enabled', 'فعال'), true);
+        }
+        // Older Core mirrors may not have a status column. In that case the
+        // upstream active-only contract is the authority.
+        return true;
     }
 
     private static function stable_color($value)
