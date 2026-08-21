@@ -82,9 +82,28 @@ class Olama_Transportation_Routes
         ), ARRAY_A);
         if (!empty($route['shared_trip_id'])) {
             $members = Olama_Transportation_DB::table('shared_trip_students');
-            $family_count = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(DISTINCT family_uid) FROM {$members} WHERE trip_id=%d", absint($route['shared_trip_id'])));
-            $route['needs_recalculation'] = $family_count !== count($route['stops']);
+            $family_stops = Olama_Transportation_DB::table('family_stops');
+            $counts = $wpdb->get_row($wpdb->prepare(
+                "SELECT COUNT(DISTINCT m.family_uid) total_families,
+                        COUNT(DISTINCT CASE WHEN fs.id IS NOT NULL THEN m.family_uid END) located_families
+                 FROM {$members} m LEFT JOIN {$family_stops} fs ON fs.family_uid=m.family_uid
+                    AND fs.latitude IS NOT NULL AND fs.longitude IS NOT NULL
+                    AND (fs.verification_status IN ('approved','needs_review') OR fs.verification_status IS NULL)
+                 WHERE m.trip_id=%d", absint($route['shared_trip_id'])), ARRAY_A);
+            $family_count = (int) ($counts['total_families'] ?? 0);
+            $located_count = (int) ($counts['located_families'] ?? 0);
+            $route['needs_recalculation'] = $located_count !== count($route['stops']);
             $route['trip_family_count'] = $family_count;
+            $route['located_family_count'] = $located_count;
+            $route['missing_location_count'] = max(0, $family_count - $located_count);
+            $route['partial_route'] = $route['missing_location_count'] > 0;
+            $route['skipped_families'] = $wpdb->get_results($wpdb->prepare(
+                "SELECT m.family_uid,MAX(m.oracle_family_id) family_number,
+                        GROUP_CONCAT(DISTINCT m.student_name ORDER BY m.student_name SEPARATOR ', ') student_names
+                 FROM {$members} m LEFT JOIN {$family_stops} fs ON fs.family_uid=m.family_uid
+                    AND fs.latitude IS NOT NULL AND fs.longitude IS NOT NULL
+                    AND (fs.verification_status IN ('approved','needs_review') OR fs.verification_status IS NULL)
+                 WHERE m.trip_id=%d AND fs.id IS NULL GROUP BY m.family_uid ORDER BY family_number", absint($route['shared_trip_id'])), ARRAY_A);
         } else {
             $route['needs_recalculation'] = false;
         }

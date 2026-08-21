@@ -324,7 +324,9 @@
     function renderRouteEditor() {
         var route = routeEditorData || {}, stops = route.stops || [], $list = $('#olama-route-stop-list');
         $('#olama-route-editor-title').text((route.name || 'Route') + ' · ' + (route.direction === 'morning' ? 'Arrival' : 'Departure'));
-        $('#olama-route-editor-status').text(route.needs_recalculation ? 'Trip membership or locations changed. Rebuild and review this route before publishing.' : '');
+        $('#olama-route-editor-status').text(route.needs_recalculation ? ('Trip has '+Number(route.located_family_count||0)+' located families but this route has '+Number((route.stops||[]).length)+' mapped stops. Rebuild the route; review the missing locations.') : (route.partial_route ? ('Optimization will continue with '+Number(route.located_family_count||0)+' located families. '+Number(route.missing_location_count||0)+' family location(s) are skipped.') : ''));
+        var skipped = route.skipped_families || [];
+        $('#olama-route-skipped-list').html(skipped.length ? '<strong>Skipped from optimization ('+skipped.length+')</strong><ul>'+skipped.map(function(f){return '<li>Family #'+escAdmin(f.family_number||'—')+(f.student_names?' · '+escAdmin(f.student_names):'')+'</li>';}).join('')+'</ul>' : '');
         $('#olama-save-route-order').prop('disabled', route.status !== 'draft');
         $('#olama-rebuild-route').prop('disabled', route.status !== 'draft');
         $list.html(stops.length ? stops.map(function (stop, index) {
