@@ -495,6 +495,17 @@ class Olama_Transportation_DB
             $wpdb->query("ALTER TABLE {$table} ADD UNIQUE KEY route_version_trip (shared_trip_id, version_number)");
         }
         if (!in_array('route_source_hash', $indexes, true)) $wpdb->query("ALTER TABLE {$table} ADD KEY route_source_hash (route_source_hash)");
+        // Establish a baseline for existing trip-owned drafts without guessing legacy unowned routes.
+        $routes = $wpdb->get_results("SELECT id,shared_trip_id FROM {$table} WHERE shared_trip_id IS NOT NULL AND (route_source_hash IS NULL OR route_source_hash='')", ARRAY_A);
+        $members = self::table('shared_trip_students');
+        $family_stops = self::table('family_stops');
+        foreach ($routes as $route) {
+            $rows = $wpdb->get_results($wpdb->prepare("SELECT DISTINCT m.family_uid,fs.latitude,fs.longitude FROM {$members} m LEFT JOIN {$family_stops} fs ON fs.family_uid=m.family_uid WHERE m.trip_id=%d", absint($route['shared_trip_id'])), ARRAY_A);
+            $values = array();
+            foreach ($rows as $row) $values[] = (string)$row['family_uid'] . ':' . (string)($row['latitude'] ?? '') . ':' . (string)($row['longitude'] ?? '');
+            sort($values, SORT_STRING);
+            $wpdb->update($table, array('route_source_hash'=>hash('sha256', absint($route['shared_trip_id']) . '|' . implode('|', $values))), array('id'=>absint($route['id'])));
+        }
     }
 
     private static function allow_missing_family_coordinates()
