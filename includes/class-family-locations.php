@@ -21,6 +21,7 @@ class Olama_Transportation_Family_Locations
 
         $families = olama_core()->read_models()->table('families');
         $student_years = olama_core()->read_models()->table('student_years');
+        $enrollments = Olama_Transportation_DB::table('enrollments');
         $stops = Olama_Transportation_DB::table('family_stops');
         self::ensure_default_planning_areas($student_years, $families, $stops, $study_year, $alternate_year);
 
@@ -30,7 +31,7 @@ class Olama_Transportation_Family_Locations
                     COALESCE(NULLIF(f.primary_mobile, ''), NULLIF(f.father_mobile, ''), f.mother_mobile) AS mobile,
                     f.father_mobile, f.mother_mobile,
                     COALESCE(NULLIF(f.family_address, ''), f.address) AS oracle_address,
-                    COUNT(DISTINCT sy.student_uid) AS registered_students,
+                    COUNT(DISTINCT COALESCE(sy.student_uid, e.student_uid)) AS registered_students,
                     f.trans_region_id, f.trans_region_name,
                     fs.id AS family_stop_id, fs.latitude, fs.longitude, fs.location_mode,
                     fs.arrival_latitude, fs.arrival_longitude, fs.departure_latitude, fs.departure_longitude,
@@ -38,13 +39,19 @@ class Olama_Transportation_Family_Locations
                     fs.area_assignment_source, fs.area_assigned_by, fs.area_assigned_at,
                     fs.source AS location_source, fs.notes, fs.maps_url, fs.verification_status, fs.updated_at AS location_updated_at,
                     a.name AS major_area_name
-             FROM {$student_years} sy
-             INNER JOIN {$families} f ON f.family_uid = sy.family_uid
+             FROM {$families} f
+             LEFT JOIN {$student_years} sy
+               ON sy.family_uid = f.family_uid
+              AND sy.study_year IN (%s, %s)
+             LEFT JOIN {$enrollments} e
+               ON (e.family_uid = f.family_uid OR (e.family_uid IS NULL AND e.oracle_family_id = f.oracle_family_id))
+              AND e.academic_year_id = %d
+              AND e.status = 'active'
              LEFT JOIN {$stops} fs
                ON fs.family_uid = f.family_uid
                OR (fs.family_uid IS NULL AND fs.oracle_family_id = f.oracle_family_id)
              LEFT JOIN " . Olama_Transportation_DB::table('major_areas') . " a ON a.id=fs.major_area_id
-             WHERE sy.study_year IN (%s, %s)
+             WHERE sy.student_uid IS NOT NULL OR e.student_uid IS NOT NULL
              GROUP BY f.family_uid, f.oracle_family_id, f.sponsor_full_name, f.father_name,
                       f.primary_mobile, f.father_mobile, f.mother_mobile,
                       f.family_address, f.address, f.trans_region_id, f.trans_region_name,
@@ -55,7 +62,8 @@ class Olama_Transportation_Family_Locations
                       fs.maps_url, fs.verification_status, fs.updated_at, a.name
              ORDER BY family_name, f.oracle_family_id",
             $study_year,
-            $alternate_year
+            $alternate_year,
+            $academic_year_id
         ), ARRAY_A);
         $morning = Olama_Transportation_Effective_Assignments::resolve($academic_year_id, 'morning');
         $afternoon = Olama_Transportation_Effective_Assignments::resolve($academic_year_id, 'afternoon');
