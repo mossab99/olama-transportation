@@ -8,7 +8,7 @@ class Olama_Transportation_Area_Trip_Assignments
 {
     public static function list_assignments($academic_year_id, $direction, $args = array())
     {
-        $resolved = Olama_Transportation_Effective_Assignments::resolve($academic_year_id, $direction);
+        $resolved = Olama_Transportation_Effective_Assignments::resolve($academic_year_id, $direction, array('include_all_students' => true));
         if (is_wp_error($resolved)) return $resolved;
         $resolved['area_options'] = array_map(function ($area) { return array_intersect_key($area, array_flip(array('id', 'name', 'color'))); }, $resolved['areas']);
         $show_all = !empty($args['show_all']);

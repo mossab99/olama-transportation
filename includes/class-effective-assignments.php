@@ -7,7 +7,7 @@ if (!defined('ABSPATH')) {
 /** Central resolver for the family stop -> planning area -> bus trip model. */
 class Olama_Transportation_Effective_Assignments
 {
-    public static function resolve($academic_year_id, $direction)
+    public static function resolve($academic_year_id, $direction, $options = array())
     {
         global $wpdb;
         $year = absint($academic_year_id);
@@ -26,10 +26,11 @@ class Olama_Transportation_Effective_Assignments
             $year
         )) > 0;
         $mode = $has_enrollments ? 'transport_enrollments' : 'academic_registration_fallback';
-        $demand_rows = Olama_Transportation_Map_Data::demand_rows($year, $study_year, $direction, $mode);
+        $include_all_students = !empty($options['include_all_students']);
+        $demand_rows = Olama_Transportation_Map_Data::demand_rows($year, $study_year, $direction, $include_all_students ? 'academic_registration_fallback' : $mode);
         // Keep the academic demand available for planning, but separately track
         // the students who actually have an active Core transportation record.
-        $transport_counts = self::transportation_counts($study_year, $demand_rows, $mode);
+        $transport_counts = self::transportation_counts($study_year, $demand_rows, $include_all_students ? 'academic_registration_fallback' : $mode);
 
         $areas_table = Olama_Transportation_DB::table('major_areas');
         $allocation_table = Olama_Transportation_DB::table('area_bus_assignments');

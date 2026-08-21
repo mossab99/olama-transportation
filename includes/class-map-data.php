@@ -8,16 +8,16 @@ class Olama_Transportation_Map_Data
 {
     public static function get($academic_year_id, $direction, $filters = array())
     {
-        $resolved = Olama_Transportation_Effective_Assignments::resolve($academic_year_id, $direction);
+        $resolved = Olama_Transportation_Effective_Assignments::resolve($academic_year_id, $direction, array('include_all_students' => sanitize_key($filters['student_scope'] ?? '') === 'all'));
         if (is_wp_error($resolved)) {
             return $resolved;
         }
-        $valid = array();
+        $valid = array(); $invalid = array();
         $invalid_count = 0;
         foreach ($resolved['families'] as $family) {
             if ($family['latitude'] === null || $family['longitude'] === null) {
                 $invalid_count++;
-                continue;
+                $invalid[] = $family; continue;
             }
             $family['region_name'] = $family['oracle_region_name'];
             $family['assignment'] = $family['bus_id'] ? array(
@@ -31,12 +31,14 @@ class Olama_Transportation_Map_Data
                 $valid[] = $family;
             }
         }
+        self::attach_family_details($valid, $invalid, $academic_year_id);
         $settings = get_option('olama_transportation_settings', array());
         $school = $settings['school_location'] ?? array('latitude' => 31.9539, 'longitude' => 35.9106);
 
         return array(
             'school' => array('latitude' => (float) $school['latitude'], 'longitude' => (float) $school['longitude']),
             'families' => $valid,
+            'invalid_families' => $invalid,
             'groups' => array(),
             'areas' => self::areas(),
             'buses' => self::buses(),
@@ -49,6 +51,25 @@ class Olama_Transportation_Map_Data
                 'warning' => $resolved['warning'],
             ),
         );
+    }
+
+    private static function attach_family_details(&$valid, &$invalid, $academic_year_id)
+    {
+        global $wpdb;
+        $items = array_merge($valid, $invalid); if (!$items) return;
+        $uids = array_values(array_unique(array_filter(wp_list_pluck($items, 'family_uid')))); if (!$uids) return;
+        $placeholders = implode(',', array_fill(0, count($uids), '%s'));
+        $families = olama_core()->read_models()->table('families'); $years = olama_core()->read_models()->table('student_years'); $students = olama_core()->read_models()->table('students');
+        $study = Olama_Transportation_Bus::study_year($academic_year_id); $alternate = strpos($study, '/') !== false ? str_replace('/', '-', $study) : str_replace('-', '/', $study);
+        $rows = $wpdb->get_results($wpdb->prepare("SELECT f.family_uid,f.father_name,COALESCE(NULLIF(f.family_address,''),f.address,'') oracle_address,s.student_name,sy.class_name grade_name,sy.section_name FROM {$families} f LEFT JOIN {$years} sy ON sy.family_uid=f.family_uid AND sy.study_year IN (%s,%s) LEFT JOIN {$students} s ON s.student_uid=sy.student_uid WHERE f.family_uid IN ({$placeholders}) ORDER BY f.family_uid,s.student_name", array_merge(array($study, $alternate), $uids)), ARRAY_A);
+        $details = array(); foreach ($rows as $row) { $uid=(string)$row['family_uid']; if (!isset($details[$uid])) $details[$uid]=array('father_name'=>(string)$row['father_name'],'oracle_address'=>(string)$row['oracle_address'],'students'=>array()); if ($row['student_name'] !== null) { $parts=preg_split('/\s+/u',trim((string)$row['student_name'])); $details[$uid]['students'][]=array('first_name'=>(string)($parts[0] ?? $row['student_name']),'grade_name'=>(string)$row['grade_name'],'section_name'=>(string)$row['section_name']); } }
+        foreach (array($valid, $invalid) as $index => $list) {
+            foreach ($list as $item_index => $item) {
+                $extra = $details[(string) $item['family_uid']] ?? array();
+                if ($index === 0) $valid[$item_index] = array_merge($item, $extra);
+                else $invalid[$item_index] = array_merge($item, $extra);
+            }
+        }
     }
 
     public static function demand_rows($academic_year_id, $study_year, $direction, $mode)
