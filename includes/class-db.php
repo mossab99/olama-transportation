@@ -179,6 +179,8 @@ class Olama_Transportation_DB
             PRIMARY KEY  (id),
             UNIQUE KEY student_year (student_uid, academic_year_id),
             KEY family_year (oracle_family_id, academic_year_id),
+            KEY year_status_family (academic_year_id, status, family_uid),
+            KEY year_status_oracle (academic_year_id, status, oracle_family_id),
             KEY status (status)
         ) $cc;");
 

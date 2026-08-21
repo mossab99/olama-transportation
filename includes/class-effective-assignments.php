@@ -253,20 +253,7 @@ class Olama_Transportation_Effective_Assignments
         if ($mode === 'transport_enrollments' || !function_exists('olama_core')) {
             return $counts;
         }
-        $transportation = olama_core()->transportation();
-        foreach ($demand_rows as $row) {
-            $family_uid = (string) ($row['family_uid'] ?? '');
-            $family_id = (string) ($row['oracle_family_id'] ?? '');
-            if ($family_uid === '' || $family_id === '') continue;
-            $records = $transportation->get_family($family_id, $study_year);
-            $active = array_filter($records, static function ($record) {
-                return !isset($record['is_active']) || $record['is_active'] === null || (int) $record['is_active'] === 1;
-            });
-            $student_ids = array_filter(array_unique(array_map(static function ($record) {
-                return (string) ($record['student_uid'] ?? ($record['oracle_student_id'] ?? ''));
-            }, $active)));
-            $counts[$family_uid] = count($student_ids);
-        }
+        foreach (self::core_transport_students($study_year, $demand_rows) as $family_uid => $students) $counts[$family_uid] = count($students);
         return $counts;
     }
 
@@ -283,45 +270,43 @@ class Olama_Transportation_Effective_Assignments
             return $counts;
         }
 
-        global $wpdb;
-        $students_by_family = array();
-        $student_uids = array();
-        $transportation = olama_core()->transportation();
-        foreach ($demand_rows as $row) {
-            $family_uid = (string) ($row['family_uid'] ?? '');
-            $family_id = (string) ($row['oracle_family_id'] ?? '');
-            if ($family_uid === '' || $family_id === '') continue;
-            $records = $transportation->get_family($family_id, $study_year);
-            foreach ($records as $record) {
-                if (isset($record['is_active']) && $record['is_active'] !== null && (int) $record['is_active'] !== 1) continue;
-                if ($direction === 'morning' && isset($record['morning_enabled']) && (int) $record['morning_enabled'] !== 1) continue;
-                if ($direction === 'afternoon' && isset($record['afternoon_enabled']) && (int) $record['afternoon_enabled'] !== 1) continue;
-                $student_uid = (string) ($record['student_uid'] ?? '');
-                if ($student_uid === '') continue;
-                $students_by_family[$family_uid][$student_uid] = true;
-                $student_uids[$student_uid] = true;
-            }
-        }
-        if (!$student_uids) return $counts;
-
-        $years = olama_core()->read_models()->table('student_years');
-        $uids = array_keys($student_uids);
-        $placeholders = implode(',', array_fill(0, count($uids), '%s'));
-        $alternate = strpos($study_year, '/') !== false ? str_replace('/', '-', $study_year) : str_replace('-', '/', $study_year);
-        $rows = $wpdb->get_results($wpdb->prepare(
-            "SELECT student_uid,class_name FROM {$years} WHERE student_uid IN ({$placeholders}) AND study_year IN (%s,%s)",
-            array_merge($uids, array($study_year, $alternate))
-        ), ARRAY_A);
-        $grade_by_student = array();
-        foreach ($rows as $row) {
-            $grade_by_student[(string) $row['student_uid']] = (string) $row['class_name'];
-        }
-        foreach ($students_by_family as $family_uid => $family_students) {
-            foreach (array_keys($family_students) as $student_uid) {
-                if (self::is_transport_kg_g1_grade($grade_by_student[$student_uid] ?? '')) $counts[$family_uid]++;
-            }
+        foreach (self::core_transport_students($study_year, $demand_rows) as $family_uid => $students) {
+            foreach ($students as $student) if (self::is_transport_kg_g1_grade($student['class_name'] ?? '')) $counts[$family_uid]++;
         }
         return $counts;
+    }
+
+    private static function core_transport_students($study_year, array $demand_rows)
+    {
+        static $cache = array();
+        $family_uids = array_values(array_unique(array_filter(array_column($demand_rows, 'family_uid'))));
+        if (!$family_uids || !function_exists('olama_core')) return array();
+        sort($family_uids, SORT_STRING);
+        $cache_key = $study_year . ':' . md5(implode('|', $family_uids));
+        if (isset($cache[$cache_key])) return $cache[$cache_key];
+
+        global $wpdb;
+        $transportation = olama_core()->read_models()->table('student_transportation');
+        $student_years = olama_core()->read_models()->table('student_years');
+        $alternate = strpos($study_year, '/') !== false ? str_replace('/', '-', $study_year) : str_replace('-', '/', $study_year);
+        $placeholders = implode(',', array_fill(0, count($family_uids), '%s'));
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT tr.family_uid,tr.student_uid,tr.oracle_student_id,
+                    COALESCE(NULLIF(tr.class_name,''), sy.class_name) class_name
+             FROM {$transportation} tr
+             LEFT JOIN {$student_years} sy ON sy.student_uid=tr.student_uid AND sy.study_year=tr.study_year
+             WHERE tr.study_year IN (%s,%s) AND (tr.is_active IS NULL OR tr.is_active=1)
+               AND tr.family_uid IN ({$placeholders})",
+            array_merge(array($study_year, $alternate), $family_uids)
+        ), ARRAY_A);
+        $result = array();
+        foreach ($rows as $row) {
+            $family_uid = (string) $row['family_uid'];
+            $student_uid = (string) ($row['student_uid'] ?: $row['oracle_student_id']);
+            if ($family_uid === '' || $student_uid === '') continue;
+            $result[$family_uid][$student_uid] = array('class_name' => (string) ($row['class_name'] ?? ''));
+        }
+        return $cache[$cache_key] = $result;
     }
 
     private static function is_transport_kg_g1_grade($grade)

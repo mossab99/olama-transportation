@@ -14,7 +14,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('OLAMA_TRANSPORTATION_VERSION', '2.9.4');
+define('OLAMA_TRANSPORTATION_VERSION', '2.9.5');
 define('OLAMA_TRANSPORTATION_FILE', __FILE__);
 define('OLAMA_TRANSPORTATION_PATH', plugin_dir_path(__FILE__));
 define('OLAMA_TRANSPORTATION_URL', plugin_dir_url(__FILE__));

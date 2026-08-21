@@ -23,7 +23,7 @@ class Olama_Transportation_Family_Locations
         $student_years = olama_core()->read_models()->table('student_years');
         $enrollments = Olama_Transportation_DB::table('enrollments');
         $stops = Olama_Transportation_DB::table('family_stops');
-        self::ensure_default_planning_areas($student_years, $families, $stops, $study_year, $alternate_year);
+        self::maybe_ensure_default_planning_areas($academic_year_id, $student_years, $families, $stops, $study_year, $alternate_year);
 
         $rows = $wpdb->get_results($wpdb->prepare(
             "SELECT f.family_uid, f.oracle_family_id,
@@ -103,7 +103,13 @@ class Olama_Transportation_Family_Locations
         $morning = sanitize_key($args['morning_status'] ?? 'all');
         $afternoon = sanitize_key($args['afternoon_status'] ?? 'all');
         $missing = sanitize_key($args['missing_locations'] ?? 'all');
-        if ($transportation !== 'all' || in_array($missing, array('missing_subscribed', 'missing_not_subscribed'), true)) {
+        $subscription_flags = self::transportation_subscription_flags($rows, $academic_year_id);
+        if ($subscription_flags !== null) {
+            foreach ($rows as &$row) {
+                $row['is_transport_subscribed'] = !empty($subscription_flags[(string) $row['family_uid']]);
+            }
+            unset($row);
+        } elseif ($transportation !== 'all' || in_array($missing, array('missing_subscribed', 'missing_not_subscribed'), true)) {
             foreach ($rows as &$row) {
                 $row['is_transport_subscribed'] = self::is_transport_subscribed($row, $academic_year_id);
             }
@@ -166,6 +172,38 @@ class Olama_Transportation_Family_Locations
                 'families_without_planning_areas' => count(array_filter($rows, function ($row) { return empty($row['major_area_id']); })),
             ),
         );
+    }
+
+    private static function transportation_subscription_flags(array $families, $academic_year_id)
+    {
+        global $wpdb;
+        if (!$families) return array();
+        $enrollments = Olama_Transportation_DB::table('enrollments');
+        $has_local_records = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$enrollments} WHERE academic_year_id=%d AND status='active'",
+            absint($academic_year_id)
+        ));
+        if (!$has_local_records) return null;
+
+        $family_uids = array_values(array_unique(array_filter(array_column($families, 'family_uid'))));
+        if (!$family_uids) return array();
+        $oracle_ids = array_values(array_unique(array_filter(array_column($families, 'oracle_family_id'))));
+        $uid_placeholders = implode(',', array_fill(0, count($family_uids), '%s'));
+        $oracle_placeholders = implode(',', array_fill(0, count($oracle_ids), '%s'));
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT DISTINCT family_uid,oracle_family_id FROM {$enrollments}
+             WHERE academic_year_id=%d AND status='active'
+               AND (family_uid IN ({$uid_placeholders}) OR oracle_family_id IN ({$oracle_placeholders}))",
+            array_merge(array(absint($academic_year_id)), $family_uids, $oracle_ids)
+        ), ARRAY_A);
+        $flags = array_fill_keys($family_uids, false);
+        $uids_by_oracle_id = array();
+        foreach ($families as $family) $uids_by_oracle_id[(string) $family['oracle_family_id']] = (string) $family['family_uid'];
+        foreach ($rows as $row) {
+            $family_uid = (string) ($row['family_uid'] ?: ($uids_by_oracle_id[(string) $row['oracle_family_id']] ?? ''));
+            if ($family_uid !== '') $flags[$family_uid] = true;
+        }
+        return $flags;
     }
 
     private static function is_transport_subscribed($family, $academic_year_id)
@@ -320,6 +358,17 @@ class Olama_Transportation_Family_Locations
                 ? __('Location approved. Another family uses the same coordinates.', 'olama-transportation')
                 : __('Location saved and approved.', 'olama-transportation'),
         );
+    }
+
+    private static function maybe_ensure_default_planning_areas($academic_year_id, $student_years, $families, $stops, $study_year, $alternate_year)
+    {
+        $cache_key = 'olama_transport_default_areas_' . absint($academic_year_id);
+        if (get_transient($cache_key)) return;
+        self::ensure_default_planning_areas($student_years, $families, $stops, $study_year, $alternate_year);
+        // Creating placeholder stops is a synchronization task, not a normal
+        // page-read operation. Throttle it so filter and pagination changes do
+        // not rerun a full INSERT/UPDATE cycle for every request.
+        set_transient($cache_key, 1, 10 * MINUTE_IN_SECONDS);
     }
 
     private static function ensure_default_planning_areas($student_years, $families, $stops, $study_year, $alternate_year)
