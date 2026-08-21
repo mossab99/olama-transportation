@@ -74,6 +74,10 @@ class Olama_Transportation_Routes
         if (!empty($route['shared_trip_id'])) {
             $route['trip'] = $wpdb->get_row($wpdb->prepare('SELECT id,name,status FROM ' . Olama_Transportation_DB::table('shared_trips') . ' WHERE id=%d', absint($route['shared_trip_id'])), ARRAY_A);
         }
+        $route['bus_number'] = (string) $wpdb->get_var($wpdb->prepare(
+            'SELECT bus_number FROM ' . Olama_Transportation_DB::table('buses') . ' WHERE id=%d',
+            absint($route['bus_id'])
+        ));
         $route['stops'] = $wpdb->get_results($wpdb->prepare(
             "SELECT rs.*, s.name, s.code, s.latitude, s.longitude, s.arrival_radius_m, s.access_notes
              FROM {$route_stops} rs JOIN {$stops} s ON s.id = rs.stop_id

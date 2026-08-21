@@ -349,15 +349,18 @@
     }
     function escAdmin(value){return $('<div>').text(value == null ? '' : value).html();}
     function routeOptimizationData(route) {
-        var rows = ['Family #\tFather name\tLatitude\tLongitude'];
+        var group = 'Bus' + (route && route.bus_id || '');
+        var rows = [];
         (route && route.stops || []).forEach(function (stop) {
             var latitude = Number(stop.latitude), longitude = Number(stop.longitude);
+            var family = stop.family_number || String(stop.name || '').replace(/^Family #\s*/i, '');
+            var name = family + (stop.father_name ? ' - ' + stop.father_name : '');
             rows.push([
-                stop.family_number || stop.name || '',
-                stop.father_name || '',
+                group,
+                name,
                 isFinite(latitude) ? latitude.toFixed(7) : '',
                 isFinite(longitude) ? longitude.toFixed(7) : ''
-            ].map(function (value) { return String(value).replace(/[\t\r\n]+/g, ' '); }).join('\t'));
+            ].map(function (value) { return String(value).replace(/[\r\n,]+/g, ' ').trim(); }).join(', '));
         });
         return rows.join('\n');
     }
@@ -385,7 +388,14 @@
     });
     $(document).on('click', '.olama-open-route', function () {
         var id = $(this).data('id');
-        rest('routes/' + id).then(function(route){routeEditorData=route;var dialog=document.getElementById('olama-route-editor');if(dialog.showModal)dialog.showModal();renderRouteEditor();}).catch(function(error){alert(error.message);});
+        rest('routes/' + id).then(function(route){routeEditorData=route;var editor=document.getElementById('olama-route-editor');editor.hidden=false;renderRouteEditor();editor.scrollIntoView({behavior:'smooth',block:'start'});}).catch(function(error){alert(error.message);});
+    });
+    $(document).on('click', '#olama-close-route-editor', function () {
+        var editor = document.getElementById('olama-route-editor');
+        editor.hidden = true;
+        routeEditorData = null;
+        if (routeEditorMap) { routeEditorMap.remove(); routeEditorMap = null; routeEditorLayer = null; }
+        document.querySelector('.olama-routes-page').scrollIntoView({behavior:'smooth', block:'start'});
     });
     $(document).on('click', '#olama-copy-route-data', function () {
         if (!routeEditorData) return;
