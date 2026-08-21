@@ -286,8 +286,11 @@ class Olama_Transportation_Effective_Assignments
         if (isset($cache[$cache_key])) return $cache[$cache_key];
 
         global $wpdb;
-        $transportation = olama_core()->read_models()->table('student_transportation');
-        $student_years = olama_core()->read_models()->table('student_years');
+        // These are synchronized Core tables. Use their established table names here so
+        // Transportation remains compatible with Core versions that do not expose the
+        // transportation mirror through the read-model allowlist yet.
+        $transportation = $wpdb->prefix . 'olama_core_student_transportation';
+        $student_years = $wpdb->prefix . 'olama_core_student_years';
         $alternate = strpos($study_year, '/') !== false ? str_replace('/', '-', $study_year) : str_replace('-', '/', $study_year);
         $placeholders = implode(',', array_fill(0, count($family_uids), '%s'));
         $rows = $wpdb->get_results($wpdb->prepare(
