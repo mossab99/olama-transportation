@@ -80,6 +80,21 @@ class Olama_Transportation_Routes
              WHERE rs.route_version_id = %d ORDER BY rs.sequence_number",
             intval($id)
         ), ARRAY_A);
+        if (!empty($route['shared_trip_id']) && $route['stops']) {
+            $members = Olama_Transportation_DB::table('shared_trip_students');
+            $families = olama_core()->read_models()->table('families');
+            $contact_rows = $wpdb->get_results($wpdb->prepare(
+                "SELECT DISTINCT m.family_uid,m.oracle_family_id,f.father_name FROM {$members} m LEFT JOIN {$families} f ON f.family_uid=m.family_uid WHERE m.trip_id=%d",
+                absint($route['shared_trip_id'])), ARRAY_A);
+            $contacts = array();
+            foreach ($contact_rows as $contact) $contacts['family-' . substr(hash('sha256', (string) $contact['family_uid']), 0, 40)] = $contact;
+            foreach ($route['stops'] as &$stop) {
+                $contact = $contacts[(string) $stop['code']] ?? array();
+                $stop['family_number'] = (string) ($contact['oracle_family_id'] ?? preg_replace('/^Family #/i', '', (string) $stop['name']));
+                $stop['father_name'] = (string) ($contact['father_name'] ?? '');
+            }
+            unset($stop);
+        }
         if (!empty($route['shared_trip_id'])) {
             $members = Olama_Transportation_DB::table('shared_trip_students');
             $family_stops = Olama_Transportation_DB::table('family_stops');

@@ -330,7 +330,9 @@
         $('#olama-save-route-order').prop('disabled', route.status !== 'draft');
         $('#olama-rebuild-route').prop('disabled', route.status !== 'draft');
         $list.html(stops.length ? stops.map(function (stop, index) {
-            return '<li class="olama-route-stop" draggable="'+(route.status === 'draft' ? 'true' : 'false')+'" data-stop-id="'+Number(stop.stop_id)+'"><b>'+ (index + 1) +'</b><div><strong>'+escAdmin(stop.name || ('Stop '+stop.stop_id))+'</strong><small>'+escAdmin(stop.access_notes || (Number(stop.latitude).toFixed(5)+', '+Number(stop.longitude).toFixed(5)))+'</small></div></li>';
+            var familyLabel = stop.family_number ? 'Family #'+stop.family_number : (stop.name || ('Stop '+stop.stop_id));
+            var father = stop.father_name ? ' · Father: '+stop.father_name : '';
+            return '<li class="olama-route-stop" draggable="'+(route.status === 'draft' ? 'true' : 'false')+'" data-stop-id="'+Number(stop.stop_id)+'"><b>'+ (index + 1) +'</b><div><strong>'+escAdmin(familyLabel)+escAdmin(father)+'</strong><small>'+escAdmin(stop.access_notes || (Number(stop.latitude).toFixed(5)+', '+Number(stop.longitude).toFixed(5)))+'</small></div></li>';
         }).join('') : '<li>No valid family stops are available for this trip.</li>');
         if (window.L) {
             if (!routeEditorMap) {
@@ -346,9 +348,49 @@
         }
     }
     function escAdmin(value){return $('<div>').text(value == null ? '' : value).html();}
+    function routeOptimizationData(route) {
+        var rows = ['Family #\tFather name\tLatitude\tLongitude'];
+        (route && route.stops || []).forEach(function (stop) {
+            var latitude = Number(stop.latitude), longitude = Number(stop.longitude);
+            rows.push([
+                stop.family_number || stop.name || '',
+                stop.father_name || '',
+                isFinite(latitude) ? latitude.toFixed(7) : '',
+                isFinite(longitude) ? longitude.toFixed(7) : ''
+            ].map(function (value) { return String(value).replace(/[\t\r\n]+/g, ' '); }).join('\t'));
+        });
+        return rows.join('\n');
+    }
+    function copyRouteOptimizationData(route) {
+        var value = routeOptimizationData(route);
+        if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(value);
+        var textarea = document.createElement('textarea');
+        textarea.value = value;
+        textarea.setAttribute('readonly', 'readonly');
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        try { document.execCommand('copy'); } finally { document.body.removeChild(textarea); }
+        return Promise.resolve();
+    }
+    function copiedButtonFeedback(button) {
+        var $button = $(button), original = $button.attr('title') || 'Copy optimization data';
+        $button.attr('title', 'Copied').addClass('is-copied');
+        window.setTimeout(function () { $button.attr('title', original).removeClass('is-copied'); }, 1400);
+    }
+    $(document).on('click', '.olama-copy-route-data', function () {
+        var button = this, id = $(button).data('id');
+        rest('routes/' + id).then(function (route) { return copyRouteOptimizationData(route); }).then(function () { copiedButtonFeedback(button); }).catch(function (error) { alert(error.message); });
+    });
     $(document).on('click', '.olama-open-route', function () {
         var id = $(this).data('id');
         rest('routes/' + id).then(function(route){routeEditorData=route;var dialog=document.getElementById('olama-route-editor');if(dialog.showModal)dialog.showModal();renderRouteEditor();}).catch(function(error){alert(error.message);});
+    });
+    $(document).on('click', '#olama-copy-route-data', function () {
+        if (!routeEditorData) return;
+        var button = this;
+        copyRouteOptimizationData(routeEditorData).then(function () { copiedButtonFeedback(button); }).catch(function (error) { alert(error.message); });
     });
     $(document).on('dragstart', '.olama-route-stop[draggable="true"]', function(event){event.originalEvent.dataTransfer.setData('text/plain', $(this).data('stop-id'));$(this).addClass('is-dragging');});
     $(document).on('dragend', '.olama-route-stop', function(){$(this).removeClass('is-dragging');});
