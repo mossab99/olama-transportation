@@ -28,7 +28,7 @@
         Promise.all([
             get('planning/area-allocations?' + query(Object.assign({}, currentFilters, { per_page: 500, page: 1, sort: 'name', order: 'asc' })), signal),
             get('planning/map-data?' + query(Object.assign({}, currentFilters, { mode: 'area', student_scope: 'all' })), signal)
-        ]).then(function (response) { state.data = response[0]; state.mapData = response[1]; render(); }).catch(function (error) { if (error.name !== 'AbortError') status(error.message || olamaPlanner.i18n.failed, 'error'); }).finally(function () { root.classList.remove('is-loading'); });
+        ]).then(function (response) { state.data = response[0]; state.mapData = response[1]; if (response[1].school && isFinite(Number(response[1].school.latitude)) && isFinite(Number(response[1].school.longitude))) school = [Number(response[1].school.latitude), Number(response[1].school.longitude)]; render(); }).catch(function (error) { if (error.name !== 'AbortError') status(error.message || olamaPlanner.i18n.failed, 'error'); }).finally(function () { root.classList.remove('is-loading'); });
     }
 
     function render() {
