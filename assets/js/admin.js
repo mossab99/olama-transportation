@@ -331,7 +331,10 @@
             return '<li class="olama-route-stop" draggable="'+(route.status === 'draft' ? 'true' : 'false')+'" data-stop-id="'+Number(stop.stop_id)+'"><b>'+ (index + 1) +'</b><div><strong>'+escAdmin(stop.name || ('Stop '+stop.stop_id))+'</strong><small>'+escAdmin(stop.access_notes || (Number(stop.latitude).toFixed(5)+', '+Number(stop.longitude).toFixed(5)))+'</small></div></li>';
         }).join('') : '<li>No valid family stops are available for this trip.</li>');
         if (window.L) {
-            if (!routeEditorMap) routeEditorMap = L.map('olama-route-map').setView([31.9539,35.9106], 11);
+            if (!routeEditorMap) {
+                routeEditorMap = L.map('olama-route-map').setView([31.9539,35.9106], 11);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:19, attribution:'&copy; OpenStreetMap contributors'}).addTo(routeEditorMap);
+            }
             if (!routeEditorLayer) routeEditorLayer = L.layerGroup().addTo(routeEditorMap); else routeEditorLayer.clearLayers();
             var points = stops.map(function(s){return [Number(s.latitude),Number(s.longitude)];}).filter(function(p){return isFinite(p[0])&&isFinite(p[1]);});
             points.forEach(function(point,index){L.marker(point).bindTooltip(String(index+1),{permanent:true,direction:'top'}).addTo(routeEditorLayer);});
