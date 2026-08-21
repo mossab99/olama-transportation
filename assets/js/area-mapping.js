@@ -5,7 +5,7 @@
     if (!root || typeof L === 'undefined' || typeof olamaPlanner === 'undefined') return;
 
     var school = [31.941402866181924, 36.00169383535448];
-    var state = { data: null, mapData: null, markers: [], controller: null, activeAreaId: null, mapScope: 'all' };
+    var state = { data: null, mapData: null, markers: [], controller: null, activeAreaId: null, mapScope: 'transportation' };
     var map = L.map('olama-planning-map', { scrollWheelZoom: false, doubleClickZoom: false, touchZoom: false, boxZoom: false, keyboard: false }).setView(school, 12);
     var markerLayer = L.layerGroup().addTo(map);
     L.tileLayer(olamaPlanner.tileUrl, { attribution: olamaPlanner.tileAttribution, maxZoom: 19 }).addTo(map);
@@ -34,7 +34,7 @@
     function render() {
         var metrics = state.data.metrics || {}, metricIds = { registered_transportation_families: 'metric-registered', valid_family_locations: 'metric-valid', families_missing_coordinates: 'metric-missing-coordinates', families_with_planning_areas: 'metric-area-assigned', families_without_planning_areas: 'metric-area-missing' };
         Object.keys(metricIds).forEach(function (key) { el(metricIds[key]).textContent = metrics[key] || 0; });
-        status(state.data.warning || '', state.data.warning ? 'warning' : ''); renderAreas(); renderMap();
+        status(state.data.warning || '', state.data.warning ? 'warning' : ''); renderAreas(); ensureModeControls(); renderMap();
     }
 
     function renderAreas() {
@@ -51,6 +51,12 @@
         if (state.activeAreaId === null) L.marker(school).addTo(markerLayer).bindPopup(olamaPlanner.i18n.school);
         legend.innerHTML = ''; Object.keys(used).map(function (id) { return used[id]; }).sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (area) { var item = document.createElement('span'), dot = document.createElement('span'); item.className = 'olama-area-color-key'; dot.className = 'olama-area-color-dot'; dot.style.setProperty('--area-color', color(area)); item.append(dot, node(area.name)); legend.appendChild(item); }); legend.hidden = !legend.children.length;
         renderInvalidLocations();
+    }
+
+    function ensureModeControls() {
+        var mapNode=el('olama-planning-map'), controls=document.getElementById('planner-map-modes');
+        if (!controls) { controls=document.createElement('div'); controls.id='planner-map-modes'; controls.className='olama-map-mode-actions'; mapNode.parentNode.insertBefore(controls,mapNode); }
+        controls.innerHTML=''; [['transportation',olamaPlanner.i18n.transportationMode||'Transportation'],['walking',olamaPlanner.i18n.walkingMode||'Walking'],['all',olamaPlanner.i18n.allStudentsMode||'All students']].forEach(function(item){var button=document.createElement('button');button.type='button';button.className='button button-small'+(state.mapScope===item[0]?' is-active':'');button.appendChild(node(item[1]));button.addEventListener('click',function(){state.mapScope=item[0];ensureModeControls();renderMap();var points=state.markers.map(function(entry){return entry.marker.getLatLng();});if(points.length)map.fitBounds(L.latLngBounds(points),{padding:[24,24],maxZoom:14});});controls.appendChild(button);});
     }
 
     function renderInvalidLocations() { var strip=document.getElementById('planner-invalid-locations'); if(!strip) { strip=document.createElement('div'); strip.id='planner-invalid-locations'; strip.className='olama-invalid-location-strip'; el('olama-planning-map').parentNode.appendChild(strip); } var invalid=(state.mapData.invalid_families||[]).filter(function(f){return state.activeAreaId===null||parseInt(f.major_area_id||0,10)===parseInt(state.activeAreaId,10);}).filter(function(f){var t=Number(f.transportation_student_count||0),w=Math.max(0,Number(f.student_count||0)-t);return state.mapScope==='transportation'?t>0:state.mapScope==='walking'?w>0:true;}); strip.innerHTML=invalid.length?'<strong>'+(olamaPlanner.i18n.invalidLocations||'Invalid or missing locations')+':</strong> '+invalid.map(function(f){return '<span class="olama-invalid-family-chip" title="'+escape(f.father_name||'')+'">○ Family #'+escape(f.oracle_family_id)+'</span>';}).join(' '):''; strip.hidden=!invalid.length; }

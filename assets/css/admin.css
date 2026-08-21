@@ -417,3 +417,5 @@
 .olama-invalid-location-strip { margin: 8px 0 14px; padding: 8px 10px; border-top: 1px solid #e5e7eb; color: #6b7280; font-size: 12px; }
 .olama-invalid-family-chip { display: inline-block; margin: 3px 5px 3px 0; padding: 3px 7px; border-radius: 12px; background: #f3f4f6; color: #6b7280; }
 .olama-area-allocation-table .button-small { margin: 2px 3px 2px 0; white-space: nowrap; }
+.olama-map-mode-actions { display:flex; gap:6px; flex-wrap:wrap; margin:0 0 8px; }
+.olama-map-mode-actions .button.is-active { background:#1d4ed8; border-color:#1d4ed8; color:#fff; }
