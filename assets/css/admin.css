@@ -400,3 +400,5 @@
     .olama-trip-board-list{grid-template-columns:1fr}.olama-trip-card-facts{grid-template-columns:repeat(3,minmax(82px,1fr))}.olama-trip-covered-areas{grid-template-columns:1fr}.olama-area-student-summary{grid-template-columns:repeat(3,1fr)}
     .olama-queue-map-section>header{align-items:flex-start;flex-direction:column}.olama-queue-map-wrap #olama-trip-queue-map{height:360px}.olama-queue-map-missing{width:calc(100% - 28px);max-height:150px;overflow:auto}.olama-missing-map-node{width:58px;height:58px}
 }
+/* Area coverage: keep non-transportation demand visually separate. */
+.olama-area-non-transport{min-width:130px;padding:10px 12px;border-radius:7px;background:#f6f7f7;color:#667085;text-align:center}.olama-area-non-transport b{display:block;color:#1d2327;font-size:18px}.olama-area-non-transport small{margin-top:2px;font-size:10px}

@@ -47,10 +47,11 @@
         var rows = (data.areas || []).map(function (area) {
             var assigned = area.shared_trips && area.shared_trips.length ? '<ul class="olama-area-trip-list">' + area.shared_trips.map(function(trip){return '<li><button type="button" class="button-link olama-open-trip" data-trip="'+trip.id+'">'+esc(trip.name)+'</button><small>'+trip.area_student_count+' students · '+esc(trip.bus_number ? 'Bus '+trip.bus_number+' · '+tripRunLabel($('#areas-direction').val(),trip.bus_trip_number) : 'Bus unassigned')+'</small></li>';}).join('') + '</ul>' : '<em>Not attached to a trip.</em>';
             return '<tr data-area="'+area.id+'"><td class="olama-area-identity"><span class="olama-area-swatch" style="background:'+esc(area.color)+'"></span><strong>'+esc(area.name)+'</strong><small>'+esc(area.code)+'</small></td>'+
-                '<td><div class="olama-area-student-summary"><span><b>'+Number(area.student_count||0)+'</b>Total students</span><span class="is-assigned"><b>'+Number(area.assigned_student_count||0)+'</b>Assigned</span><span class="'+(Number(area.unassigned_student_count||0)>0?'is-unassigned':'is-complete')+'"><b>'+Number(area.unassigned_student_count||0)+'</b>Not assigned</span></div></td>'+
+                '<td><div class="olama-area-student-summary"><span><b>'+Number(area.transportation_student_count||0)+'</b>Transportation students</span><span class="is-assigned"><b>'+Number(area.assigned_student_count||0)+'</b>Assigned</span><span class="'+(Number(area.unassigned_student_count||0)>0?'is-unassigned':'is-complete')+'"><b>'+Number(area.unassigned_student_count||0)+'</b>Not assigned</span></div></td>'+
+                '<td><div class="olama-area-non-transport"><b>'+Number(area.non_transportation_student_count||0)+'</b><small>Academic students not registered</small></div></td>'+
                 '<td>'+assigned+'</td><td><div class="olama-area-display-settings"><label><input class="areas-type" type="checkbox" '+(area.area_type==='main'?'checked':'')+'> Main area</label><label><span>Color</span><input class="areas-color" type="color" value="'+esc(area.color||'#1a56db')+'"></label></div></td></tr>';
         }).join('');
-        $('#areas-body').html(rows || '<tr><td colspan="4">No active Oracle areas found.</td></tr>');
+        $('#areas-body').html(rows || '<tr><td colspan="5">No active Oracle areas found.</td></tr>');
     }
     function load(message) {
         feedback('Loading…');

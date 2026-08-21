@@ -27,6 +27,9 @@ class Olama_Transportation_Effective_Assignments
         )) > 0;
         $mode = $has_enrollments ? 'transport_enrollments' : 'academic_registration_fallback';
         $demand_rows = Olama_Transportation_Map_Data::demand_rows($year, $study_year, $direction, $mode);
+        // Keep the academic demand available for planning, but separately track
+        // the students who actually have an active Core transportation record.
+        $transport_counts = self::transportation_counts($study_year, $demand_rows, $mode);
 
         $areas_table = Olama_Transportation_DB::table('major_areas');
         $allocation_table = Olama_Transportation_DB::table('area_bus_assignments');
@@ -40,6 +43,8 @@ class Olama_Transportation_Effective_Assignments
             $area['id'] = (int) $area['id'];
             $area['family_count'] = 0;
             $area['student_count'] = 0;
+            $area['transportation_student_count'] = 0;
+            $area['non_transportation_student_count'] = 0;
             $area['missing_location_family_count'] = 0;
             $area_index[$area['id']] = &$area;
         }
@@ -87,6 +92,8 @@ class Olama_Transportation_Effective_Assignments
             if ($area_id && isset($area_index[$area_id])) {
                 $area_index[$area_id]['family_count']++;
                 $area_index[$area_id]['student_count'] += $count;
+                $transport_count = (int) ($transport_counts[(string) $row['family_uid']] ?? ($mode === 'transport_enrollments' ? $count : 0));
+                $area_index[$area_id]['transportation_student_count'] += min($count, max(0, $transport_count));
                 if (!$valid_location) {
                     $area_index[$area_id]['missing_location_family_count']++;
                 }
@@ -167,6 +174,10 @@ class Olama_Transportation_Effective_Assignments
             $area['assignment_status'] = $status;
         }
         unset($area);
+        foreach ($areas as &$area) {
+            $area['non_transportation_student_count'] = max(0, (int) $area['student_count'] - (int) $area['transportation_student_count']);
+        }
+        unset($area);
         foreach ($families as &$family) {
             if ($family['bus_id']) {
                 $key = $family['bus_id'] . ':' . $family['trip_number'];
@@ -191,7 +202,7 @@ class Olama_Transportation_Effective_Assignments
             'academic_year_id' => $year,
             'direction' => $direction,
             'demand_mode' => $mode,
-            'warning' => $mode === 'academic_registration_fallback' ? __('Transportation enrollment data is unavailable. Student counts are based on academic registration and are not mixed with transportation enrollments.', 'olama-transportation') : '',
+            'warning' => $mode === 'academic_registration_fallback' ? __('Planning demand uses academic registration; transportation coverage counts only active transportation registrations.', 'olama-transportation') : '',
             'families' => $families,
             'areas' => $areas,
             'trip_usage' => $trip_usage,
@@ -223,5 +234,34 @@ class Olama_Transportation_Effective_Assignments
             }
         }
         return null;
+    }
+
+    private static function transportation_counts($study_year, array $demand_rows, $mode)
+    {
+        $counts = array();
+        foreach ($demand_rows as $row) {
+            $family_uid = (string) ($row['family_uid'] ?? '');
+            if ($family_uid !== '') {
+                $counts[$family_uid] = $mode === 'transport_enrollments' ? (int) ($row['student_count'] ?? 0) : 0;
+            }
+        }
+        if ($mode === 'transport_enrollments' || !function_exists('olama_core')) {
+            return $counts;
+        }
+        $transportation = olama_core()->transportation();
+        foreach ($demand_rows as $row) {
+            $family_uid = (string) ($row['family_uid'] ?? '');
+            $family_id = (string) ($row['oracle_family_id'] ?? '');
+            if ($family_uid === '' || $family_id === '') continue;
+            $records = $transportation->get_family($family_id, $study_year);
+            $active = array_filter($records, static function ($record) {
+                return !isset($record['is_active']) || $record['is_active'] === null || (int) $record['is_active'] === 1;
+            });
+            $student_ids = array_filter(array_unique(array_map(static function ($record) {
+                return (string) ($record['student_uid'] ?? ($record['oracle_student_id'] ?? ''));
+            }, $active)));
+            $counts[$family_uid] = count($student_ids);
+        }
+        return $counts;
     }
 }
