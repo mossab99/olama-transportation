@@ -291,6 +291,9 @@ class Olama_Transportation_Effective_Assignments
         // transportation mirror through the read-model allowlist yet.
         $transportation = $wpdb->prefix . 'olama_core_student_transportation';
         $student_years = $wpdb->prefix . 'olama_core_student_years';
+        if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $transportation)) !== $transportation) {
+            return self::legacy_core_transport_students($study_year, $demand_rows);
+        }
         $alternate = strpos($study_year, '/') !== false ? str_replace('/', '-', $study_year) : str_replace('-', '/', $study_year);
         $placeholders = implode(',', array_fill(0, count($family_uids), '%s'));
         $rows = $wpdb->get_results($wpdb->prepare(
@@ -302,6 +305,9 @@ class Olama_Transportation_Effective_Assignments
                AND tr.family_uid IN ({$placeholders})",
             array_merge(array($study_year, $alternate), $family_uids)
         ), ARRAY_A);
+        if (!is_array($rows)) {
+            return self::legacy_core_transport_students($study_year, $demand_rows);
+        }
         $result = array();
         foreach ($rows as $row) {
             $family_uid = (string) $row['family_uid'];
@@ -310,6 +316,25 @@ class Olama_Transportation_Effective_Assignments
             $result[$family_uid][$student_uid] = array('class_name' => (string) ($row['class_name'] ?? ''));
         }
         return $cache[$cache_key] = $result;
+    }
+
+    /** Compatibility path for installations whose Core transportation mirror is unavailable. */
+    private static function legacy_core_transport_students($study_year, array $demand_rows)
+    {
+        $result = array();
+        $transportation = olama_core()->transportation();
+        foreach ($demand_rows as $row) {
+            $family_uid = (string) ($row['family_uid'] ?? '');
+            $family_id = (string) ($row['oracle_family_id'] ?? '');
+            if ($family_uid === '' || $family_id === '') continue;
+            foreach ($transportation->get_family($family_id, $study_year) as $record) {
+                if (isset($record['is_active']) && $record['is_active'] !== null && (int) $record['is_active'] !== 1) continue;
+                $student_uid = (string) ($record['student_uid'] ?? ($record['oracle_student_id'] ?? ''));
+                if ($student_uid === '') continue;
+                $result[$family_uid][$student_uid] = array('class_name' => (string) ($record['class_name'] ?? ''));
+            }
+        }
+        return $result;
     }
 
     private static function is_transport_kg_g1_grade($grade)
