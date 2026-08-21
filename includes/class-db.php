@@ -94,6 +94,13 @@ class Olama_Transportation_DB
             oracle_family_id varchar(100) NOT NULL,
             latitude decimal(10,7) DEFAULT NULL,
             longitude decimal(10,7) DEFAULT NULL,
+            location_mode varchar(20) NOT NULL DEFAULT 'default',
+            arrival_latitude decimal(10,7) DEFAULT NULL,
+            arrival_longitude decimal(10,7) DEFAULT NULL,
+            departure_latitude decimal(10,7) DEFAULT NULL,
+            departure_longitude decimal(10,7) DEFAULT NULL,
+            arrival_major_area_id bigint(20) UNSIGNED DEFAULT NULL,
+            departure_major_area_id bigint(20) UNSIGNED DEFAULT NULL,
             maps_url text DEFAULT NULL,
             address_text text DEFAULT NULL,
             area_text varchar(150) DEFAULT NULL,
@@ -116,6 +123,18 @@ class Olama_Transportation_DB
             KEY major_area_id (major_area_id),
             KEY approved_stop_id (approved_stop_id),
             KEY verification_status (verification_status)
+        ) $cc;");
+
+        dbDelta("CREATE TABLE {$p}olama_transport_companion_locations (
+            id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            user_id bigint(20) UNSIGNED NOT NULL,
+            latitude decimal(10,7) DEFAULT NULL,
+            longitude decimal(10,7) DEFAULT NULL,
+            maps_url text DEFAULT NULL,
+            verification_status varchar(30) NOT NULL DEFAULT 'approved',
+            created_at datetime NOT NULL,
+            updated_at datetime NOT NULL,
+            PRIMARY KEY (id), UNIQUE KEY user_id (user_id)
         ) $cc;");
 
         dbDelta("CREATE TABLE {$p}olama_transport_stops (
@@ -459,6 +478,28 @@ class Olama_Transportation_DB
         self::ensure_legacy_assignment_links();
         self::upgrade_route_schema();
         self::upgrade_optimization_run_schema();
+        self::upgrade_family_location_schema();
+    }
+
+    private static function upgrade_family_location_schema()
+    {
+        global $wpdb;
+        $table = self::table('family_stops');
+        $columns = $wpdb->get_col("SHOW COLUMNS FROM {$table}", 0);
+        $add = array(
+            'location_mode' => "ADD COLUMN location_mode varchar(20) NOT NULL DEFAULT 'default' AFTER longitude",
+            'arrival_latitude' => "ADD COLUMN arrival_latitude decimal(10,7) DEFAULT NULL AFTER location_mode",
+            'arrival_longitude' => "ADD COLUMN arrival_longitude decimal(10,7) DEFAULT NULL AFTER arrival_latitude",
+            'departure_latitude' => "ADD COLUMN departure_latitude decimal(10,7) DEFAULT NULL AFTER arrival_longitude",
+            'departure_longitude' => "ADD COLUMN departure_longitude decimal(10,7) DEFAULT NULL AFTER departure_latitude",
+            'arrival_major_area_id' => "ADD COLUMN arrival_major_area_id bigint(20) UNSIGNED DEFAULT NULL AFTER departure_longitude",
+            'departure_major_area_id' => "ADD COLUMN departure_major_area_id bigint(20) UNSIGNED DEFAULT NULL AFTER arrival_major_area_id",
+        );
+        foreach ($add as $column => $sql) {
+            if (!in_array($column, $columns, true)) $wpdb->query("ALTER TABLE {$table} {$sql}");
+        }
+        $wpdb->query("UPDATE {$table} SET arrival_latitude=latitude, arrival_longitude=longitude WHERE arrival_latitude IS NULL AND latitude IS NOT NULL");
+        $wpdb->query("UPDATE {$table} SET arrival_major_area_id=major_area_id, departure_major_area_id=major_area_id WHERE arrival_major_area_id IS NULL AND major_area_id IS NOT NULL");
     }
 
     private static function upgrade_optimization_run_schema()

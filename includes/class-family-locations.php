@@ -32,7 +32,9 @@ class Olama_Transportation_Family_Locations
                     COALESCE(NULLIF(f.family_address, ''), f.address) AS oracle_address,
                     COUNT(DISTINCT sy.student_uid) AS registered_students,
                     f.trans_region_id, f.trans_region_name,
-                    fs.id AS family_stop_id, fs.latitude, fs.longitude, fs.major_area_id,
+                    fs.id AS family_stop_id, fs.latitude, fs.longitude, fs.location_mode,
+                    fs.arrival_latitude, fs.arrival_longitude, fs.departure_latitude, fs.departure_longitude,
+                    fs.arrival_major_area_id, fs.departure_major_area_id, fs.major_area_id,
                     fs.area_assignment_source, fs.area_assigned_by, fs.area_assigned_at,
                     fs.source AS location_source, fs.notes, fs.maps_url, fs.verification_status, fs.updated_at AS location_updated_at,
                     a.name AS major_area_name
@@ -46,7 +48,9 @@ class Olama_Transportation_Family_Locations
              GROUP BY f.family_uid, f.oracle_family_id, f.sponsor_full_name, f.father_name,
                       f.primary_mobile, f.father_mobile, f.mother_mobile,
                       f.family_address, f.address, f.trans_region_id, f.trans_region_name,
-                      fs.id, fs.latitude, fs.longitude, fs.major_area_id, fs.area_assignment_source,
+                      fs.id, fs.latitude, fs.longitude, fs.location_mode, fs.arrival_latitude, fs.arrival_longitude,
+                      fs.departure_latitude, fs.departure_longitude, fs.arrival_major_area_id, fs.departure_major_area_id,
+                      fs.major_area_id, fs.area_assignment_source,
                       fs.area_assigned_by, fs.area_assigned_at, fs.source, fs.notes,
                       fs.maps_url, fs.verification_status, fs.updated_at, a.name
              ORDER BY family_name, f.oracle_family_id",
@@ -184,7 +188,7 @@ class Olama_Transportation_Family_Locations
         $students = olama_core()->read_models()->table('students');
         $student_years = olama_core()->read_models()->table('student_years');
         $rows = $wpdb->get_results($wpdb->prepare(
-            "SELECT sy.family_uid,sy.student_uid,s.student_name,sy.class_name,sy.section_name
+            "SELECT sy.family_uid,sy.student_uid,s.id student_id,s.oracle_student_id,s.student_name,sy.class_name,sy.section_name
              FROM {$student_years} sy INNER JOIN {$students} s ON s.student_uid=sy.student_uid
              WHERE sy.family_uid IN ({$placeholders}) AND sy.study_year IN (%s,%s)
              ORDER BY sy.family_uid,s.student_name",
@@ -195,6 +199,10 @@ class Olama_Transportation_Family_Locations
             $parts = preg_split('/\s+/u', trim((string) $row['student_name']));
             $by_family[$row['family_uid']][] = array(
                 'first_name' => $parts[0] ?? (string) $row['student_name'],
+                'student_id' => (int) $row['student_id'],
+                'student_uid' => (string) $row['student_uid'],
+                'oracle_student_id' => (string) ($row['oracle_student_id'] ?? ''),
+                'student_name' => (string) $row['student_name'],
                 'class_name' => (string) $row['class_name'],
                 'section_name' => (string) $row['section_name'],
             );
@@ -219,11 +227,23 @@ class Olama_Transportation_Family_Locations
             );
         }
 
-        $coordinates = self::parse_coordinates($input);
-        if (is_wp_error($coordinates)) {
-            return $coordinates;
+        $mode = is_array($input) ? sanitize_key($input['location_mode'] ?? 'default') : 'default';
+        $locations = is_array($input) ? ($input['locations'] ?? array()) : array('default' => $input);
+        if (!in_array($mode, array('default', 'two_locations'), true)) $mode = 'default';
+        $coordinates = array();
+        foreach ($mode === 'two_locations' ? array('arrival', 'departure') : array('default') as $key) {
+            $coordinates[$key] = self::parse_coordinates($locations[$key] ?? '');
+            if (is_wp_error($coordinates[$key])) return $coordinates[$key];
+            if (!self::within_service_bounds($coordinates[$key]['latitude'], $coordinates[$key]['longitude'])) {
+                return new WP_Error(
+                    'outside_service_area',
+                    __('The location is outside the configured transportation service area.', 'olama-transportation'),
+                    array('status' => 400)
+                );
+            }
         }
-        if (!self::within_service_bounds($coordinates['latitude'], $coordinates['longitude'])) {
+        if (!isset($coordinates['default'])) $coordinates['default'] = $coordinates['arrival'];
+        if (!self::within_service_bounds($coordinates['default']['latitude'], $coordinates['default']['longitude'])) {
             return new WP_Error(
                 'outside_service_area',
                 __('The location is outside the configured transportation service area.', 'olama-transportation'),
@@ -246,13 +266,19 @@ class Olama_Transportation_Family_Locations
         $major_area_id = !empty($existing_stop['major_area_id'])
             ? (int) $existing_stop['major_area_id']
             : ($resolved_area_id ?: null);
-        $maps_url = 'https://www.google.com/maps?q='
-            . rawurlencode($coordinates['latitude'] . ',' . $coordinates['longitude']);
+        $maps_url = 'https://www.google.com/maps?q=' . rawurlencode($coordinates['default']['latitude'] . ',' . $coordinates['default']['longitude']);
         $saved = Olama_Transportation_Repository::save_item('family-stops', array(
             'family_uid' => $family_uid,
             'oracle_family_id' => $family['oracle_family_id'],
-            'latitude' => $coordinates['latitude'],
-            'longitude' => $coordinates['longitude'],
+            'latitude' => $coordinates['default']['latitude'],
+            'longitude' => $coordinates['default']['longitude'],
+            'location_mode' => $mode,
+            'arrival_latitude' => $mode === 'two_locations' ? $coordinates['arrival']['latitude'] : $coordinates['default']['latitude'],
+            'arrival_longitude' => $mode === 'two_locations' ? $coordinates['arrival']['longitude'] : $coordinates['default']['longitude'],
+            'departure_latitude' => $mode === 'two_locations' ? $coordinates['departure']['latitude'] : $coordinates['default']['latitude'],
+            'departure_longitude' => $mode === 'two_locations' ? $coordinates['departure']['longitude'] : $coordinates['default']['longitude'],
+            'arrival_major_area_id' => $mode === 'two_locations' ? absint($input['arrival_major_area_id'] ?? 0) : $major_area_id,
+            'departure_major_area_id' => $mode === 'two_locations' ? absint($input['departure_major_area_id'] ?? 0) : $major_area_id,
             'maps_url' => $maps_url,
             'address_text' => $family['family_address'] ?: $family['address'],
             'area_text' => $family['trans_region_name'],
@@ -267,8 +293,8 @@ class Olama_Transportation_Family_Locations
             return $saved;
         }
 
-        $latitude_key = number_format($coordinates['latitude'], 7, '.', '');
-        $longitude_key = number_format($coordinates['longitude'], 7, '.', '');
+        $latitude_key = number_format($coordinates['default']['latitude'], 7, '.', '');
+        $longitude_key = number_format($coordinates['default']['longitude'], 7, '.', '');
         $duplicate_count = intval($wpdb->get_var($wpdb->prepare(
             "SELECT COUNT(*) FROM {$table}
              WHERE id <> %d AND latitude = %s AND longitude = %s",
@@ -279,7 +305,7 @@ class Olama_Transportation_Family_Locations
 
         return array(
             'family_stop' => $saved,
-            'normalized_location' => $coordinates['latitude'] . ', ' . $coordinates['longitude'],
+            'normalized_location' => $coordinates['default']['latitude'] . ', ' . $coordinates['default']['longitude'],
             'map_url' => $maps_url,
             'duplicate_count' => $duplicate_count,
             'message' => $duplicate_count

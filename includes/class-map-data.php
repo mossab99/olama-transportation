@@ -78,19 +78,28 @@ class Olama_Transportation_Map_Data
         $families = olama_core()->read_models()->table('families');
         $stops = Olama_Transportation_DB::table('family_stops');
         $alternate = strpos($study_year, '/') !== false ? str_replace('/', '-', $study_year) : str_replace('-', '/', $study_year);
+        $lat_expr = $direction === 'morning' ? 'COALESCE(fs.arrival_latitude,fs.latitude)' : 'COALESCE(fs.departure_latitude,fs.latitude)';
+        $lng_expr = $direction === 'morning' ? 'COALESCE(fs.arrival_longitude,fs.longitude)' : 'COALESCE(fs.departure_longitude,fs.longitude)';
         if ($mode === 'transport_enrollments') {
             $enrollments = Olama_Transportation_DB::table('enrollments');
+            $years = olama_core()->read_models()->table('student_years');
             $column = $direction === 'morning' ? 'morning_enabled' : 'afternoon_enabled';
             return $wpdb->get_results($wpdb->prepare(
                 "SELECT f.family_uid, f.oracle_family_id,
                         COALESCE(NULLIF(f.sponsor_full_name,''), NULLIF(f.father_name,''), f.oracle_family_id) family_name,
-                        f.trans_region_id, f.trans_region_name, fs.id family_stop_id, fs.latitude, fs.longitude,
-                        fs.major_area_id, fs.verification_status, fs.area_assignment_source, COUNT(DISTINCT e.student_uid) student_count
+                        f.trans_region_id, f.trans_region_name, fs.id family_stop_id, {$lat_expr} latitude, {$lng_expr} longitude,
+                        fs.major_area_id, fs.verification_status, fs.area_assignment_source, COUNT(DISTINCT e.student_uid) student_count,
+                        COUNT(DISTINCT CASE WHEN LOWER(TRIM(sy.class_name)) IN
+                            ('kg1','kg 1','kg-1','kg2','kg 2','kg-2','تمهيدي','بستان','الصف الأول','الصف الاول','صف أول','صف اول','الأول','الاول','grade 1','first grade','1')
+                            THEN e.student_uid END) transport_kg_g1_count
                  FROM {$enrollments} e INNER JOIN {$families} f ON f.family_uid=e.family_uid OR (e.family_uid IS NULL AND f.oracle_family_id=e.oracle_family_id)
+                 LEFT JOIN {$years} sy ON sy.student_uid=e.student_uid AND sy.study_year IN (%s,%s)
                  LEFT JOIN {$stops} fs ON fs.family_uid=f.family_uid OR (fs.family_uid IS NULL AND fs.oracle_family_id=f.oracle_family_id)
                  WHERE e.academic_year_id=%d AND e.status='active' AND e.{$column}=1
                  GROUP BY f.family_uid, f.oracle_family_id, f.sponsor_full_name, f.father_name, f.trans_region_id,
-                          f.trans_region_name, fs.id, fs.latitude, fs.longitude, fs.major_area_id, fs.verification_status, fs.area_assignment_source",
+                          f.trans_region_name, fs.id, fs.latitude, fs.longitude, fs.arrival_latitude, fs.arrival_longitude, fs.departure_latitude, fs.departure_longitude, fs.major_area_id, fs.verification_status, fs.area_assignment_source",
+                $study_year,
+                $alternate,
                 $academic_year_id
             ), ARRAY_A);
         }
@@ -98,13 +107,16 @@ class Olama_Transportation_Map_Data
         return $wpdb->get_results($wpdb->prepare(
             "SELECT f.family_uid, f.oracle_family_id,
                     COALESCE(NULLIF(f.sponsor_full_name,''), NULLIF(f.father_name,''), f.oracle_family_id) family_name,
-                    f.trans_region_id, f.trans_region_name, fs.id family_stop_id, fs.latitude, fs.longitude,
-                    fs.major_area_id, fs.verification_status, fs.area_assignment_source, COUNT(DISTINCT sy.student_uid) student_count
+                    f.trans_region_id, f.trans_region_name, fs.id family_stop_id, {$lat_expr} latitude, {$lng_expr} longitude,
+                    fs.major_area_id, fs.verification_status, fs.area_assignment_source, COUNT(DISTINCT sy.student_uid) student_count,
+                    COUNT(DISTINCT CASE WHEN LOWER(TRIM(sy.class_name)) IN
+                        ('kg1','kg 1','kg-1','kg2','kg 2','kg-2','تمهيدي','بستان','الصف الأول','الصف الاول','صف أول','صف اول','الأول','الاول','grade 1','first grade','1')
+                        THEN sy.student_uid END) transport_kg_g1_count
              FROM {$years} sy INNER JOIN {$families} f ON f.family_uid=sy.family_uid
              LEFT JOIN {$stops} fs ON fs.family_uid=f.family_uid OR (fs.family_uid IS NULL AND fs.oracle_family_id=f.oracle_family_id)
              WHERE sy.study_year IN (%s,%s)
              GROUP BY f.family_uid, f.oracle_family_id, f.sponsor_full_name, f.father_name, f.trans_region_id,
-                      f.trans_region_name, fs.id, fs.latitude, fs.longitude, fs.major_area_id, fs.verification_status, fs.area_assignment_source",
+                      f.trans_region_name, fs.id, fs.latitude, fs.longitude, fs.arrival_latitude, fs.arrival_longitude, fs.departure_latitude, fs.departure_longitude, fs.major_area_id, fs.verification_status, fs.area_assignment_source",
             $study_year,
             $alternate
         ), ARRAY_A);

@@ -150,12 +150,18 @@ class Olama_Transportation_Shared_Trips
             'SELECT * FROM ' . Olama_Transportation_DB::table('shared_trip_queue') . ' WHERE trip_id=%d ORDER BY queue_position,id',
             $trip['id']
         ), ARRAY_A);
+        $dual_by_family = array();
+        if ($trip['queue']) {
+            $dual_rows = $wpdb->get_results('SELECT family_uid,location_mode FROM ' . Olama_Transportation_DB::table('family_stops') . " WHERE location_mode='two_locations' AND family_uid IS NOT NULL", ARRAY_A);
+            foreach ($dual_rows as $dual_row) $dual_by_family[(string)$dual_row['family_uid']] = true;
+        }
         $student_names_by_family = array();
         foreach ($trip['students'] as $student) {
             $family_uid = (string) $student['family_uid'];
             $student_names_by_family[$family_uid][] = (string) $student['student_name'];
         }
         foreach ($trip['queue'] as &$node) {
+            $node['dual_location'] = $node['node_type'] === 'family' && !empty($dual_by_family[(string)$node['family_uid']]);
             $node['student_names'] = $node['node_type'] === 'family'
                 ? array_values(array_unique($student_names_by_family[(string) $node['family_uid']] ?? array()))
                 : array();
@@ -387,18 +393,20 @@ class Olama_Transportation_Shared_Trips
     public static function build_queue($id)
     {
         global $wpdb;
-        $trip = self::editable($id);
-        if (is_wp_error($trip)) return $trip;
+        $trip = self::get($id);
+        if (!$trip) return new WP_Error('shared_trip_not_found', __('Trip was not found.', 'olama-transportation'), array('status' => 404));
         $members = Olama_Transportation_DB::table('shared_trip_students');
         $families = olama_core()->read_models()->table('families');
         $stops = Olama_Transportation_DB::table('family_stops');
         $families_rows = $wpdb->get_results($wpdb->prepare(
             "SELECT s.family_uid,MAX(s.oracle_family_id) oracle_family_id,COUNT(DISTINCT s.student_uid) student_count,
                     COALESCE(NULLIF(f.sponsor_full_name,''),NULLIF(f.father_name,''),MAX(s.oracle_family_id)) family_name,
-                    fs.latitude,fs.longitude,fs.verification_status
+                    ".($trip['direction'] === 'morning' ? 'COALESCE(fs.arrival_latitude,fs.latitude)' : 'COALESCE(fs.departure_latitude,fs.latitude)')." latitude,
+                    ".($trip['direction'] === 'morning' ? 'COALESCE(fs.arrival_longitude,fs.longitude)' : 'COALESCE(fs.departure_longitude,fs.longitude)')." longitude,
+                    fs.verification_status
              FROM {$members} s INNER JOIN {$families} f ON f.family_uid=s.family_uid
              LEFT JOIN {$stops} fs ON fs.family_uid=f.family_uid OR (fs.family_uid IS NULL AND fs.oracle_family_id=f.oracle_family_id)
-             WHERE s.trip_id=%d GROUP BY s.family_uid,fs.id ORDER BY MIN(s.major_area_id),family_name",
+             WHERE s.trip_id=%d GROUP BY s.family_uid,fs.id,fs.latitude,fs.longitude,fs.arrival_latitude,fs.arrival_longitude,fs.departure_latitude,fs.departure_longitude ORDER BY MIN(s.major_area_id),family_name",
             $trip['id']
         ), ARRAY_A);
         if (!$families_rows) return new WP_Error('empty_shared_trip', __('Select students before building the family queue.', 'olama-transportation'), array('status' => 400));

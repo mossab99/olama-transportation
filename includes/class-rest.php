@@ -132,6 +132,18 @@ class Olama_Transportation_REST
             'callback' => array($this, 'save_family_location'),
             'permission_callback' => array($this, 'can_manage'),
         ));
+        register_rest_route(self::NS, '/dual-locations', array(
+            array('methods'=>WP_REST_Server::READABLE,'callback'=>array($this,'dual_location_list'),'permission_callback'=>array($this,'can_view')),
+        ));
+        register_rest_route(self::NS, '/dual-locations/assign', array(
+            array('methods'=>WP_REST_Server::CREATABLE,'callback'=>array($this,'dual_location_assign'),'permission_callback'=>array($this,'can_manage')),
+        ));
+        register_rest_route(self::NS, '/companion-locations', array(
+            array('methods'=>WP_REST_Server::READABLE,'callback'=>array($this,'companion_location_list'),'permission_callback'=>array($this,'can_view')),
+        ));
+        register_rest_route(self::NS, '/companion-locations/(?P<user_id>\d+)', array(
+            array('methods'=>WP_REST_Server::EDITABLE,'callback'=>array($this,'save_companion_location'),'permission_callback'=>array($this,'can_manage')),
+        ));
         register_rest_route(self::NS, '/settings', array(
             array('methods' => WP_REST_Server::READABLE, 'callback' => array($this, 'get_settings'), 'permission_callback' => array($this, 'can_manage')),
             array('methods' => WP_REST_Server::EDITABLE, 'callback' => array($this, 'save_settings'), 'permission_callback' => array($this, 'can_manage')),
@@ -266,7 +278,7 @@ class Olama_Transportation_REST
     public function generate_workspace_queue(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Areas_Workspace::generate_queue($request['id'])); }
     public function workspace_queue(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Areas_Workspace::queue($request['id'])); }
     public function create_shared_trip(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Shared_Trips::create($request->get_json_params() ?: $request->get_params())); }
-    public function get_shared_trip(WP_REST_Request $request) { $trip=Olama_Transportation_Shared_Trips::get($request['id']); return $trip ? rest_ensure_response($trip) : new WP_Error('shared_trip_not_found', __('Trip was not found.', 'olama-transportation'), array('status'=>404)); }
+    public function get_shared_trip(WP_REST_Request $request) { $trip=Olama_Transportation_Shared_Trips::get($request['id']); if ($trip && $trip['status'] === 'published' && $trip['student_count'] > 0 && empty($trip['queue'])) { $rebuilt=Olama_Transportation_Shared_Trips::build_queue($trip['id']); if (!is_wp_error($rebuilt)) $trip=$rebuilt; } return $trip ? rest_ensure_response($trip) : new WP_Error('shared_trip_not_found', __('Trip was not found.', 'olama-transportation'), array('status'=>404)); }
     public function update_shared_trip(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Shared_Trips::update($request['id'], $request->get_json_params() ?: $request->get_params())); }
     public function delete_shared_trip_draft(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Shared_Trips::delete_draft($request['id'])); }
     public function shared_trip_candidates(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Shared_Trips::candidates($request['id'], $request->get_param('major_area_id'))); }
@@ -316,6 +328,30 @@ class Olama_Transportation_REST
         return rest_ensure_response(Olama_Transportation_Family_Locations::admin_list($year, $request->get_params()));
     }
 
+    public function dual_location_list(WP_REST_Request $request)
+    {
+        $year = absint($request->get_param('academic_year_id'));
+        if (!$year) return new WP_Error('missing_year', __('Academic year is required.', 'olama-transportation'), array('status'=>400));
+        return rest_ensure_response(Olama_Transportation_Dual_Locations::list($year));
+    }
+
+    public function dual_location_assign(WP_REST_Request $request)
+    {
+        $input = $request->get_json_params() ?: $request->get_params();
+        return $this->respond(Olama_Transportation_Dual_Locations::assign($input['academic_year_id'] ?? 0, $input['family_uid'] ?? '', $input['direction'] ?? '', $input['trip_id'] ?? 0));
+    }
+
+    public function companion_location_list(WP_REST_Request $request)
+    {
+        return rest_ensure_response(Olama_Transportation_Companion_Locations::list(absint($request->get_param('academic_year_id'))));
+    }
+
+    public function save_companion_location(WP_REST_Request $request)
+    {
+        $input=$request->get_json_params() ?: $request->get_params();
+        return $this->respond(Olama_Transportation_Companion_Locations::save($request['user_id'], $input['location'] ?? ''));
+    }
+
     public function save_family_area(WP_REST_Request $request)
     {
         $input = $request->get_json_params() ?: $request->get_params();
@@ -350,7 +386,7 @@ class Olama_Transportation_REST
     public function save_family_location(WP_REST_Request $request)
     {
         $input = $request->get_json_params() ?: $request->get_params();
-        if (empty($input['location'])) {
+        if (empty($input['location']) && empty($input['locations'])) {
             return new WP_Error(
                 'missing_location',
                 __('Paste the family location first.', 'olama-transportation'),
@@ -359,7 +395,7 @@ class Olama_Transportation_REST
         }
         return $this->respond(Olama_Transportation_Family_Locations::save(
             $request['family_uid'],
-            $input['location'],
+            !empty($input['locations']) ? $input : ($input['location'] ?? ''),
             $input['notes'] ?? ''
         ));
     }

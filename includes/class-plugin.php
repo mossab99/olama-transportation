@@ -56,6 +56,8 @@ final class Olama_Transportation_Plugin
         require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-audit.php';
         require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-repository.php';
         require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-family-locations.php';
+        require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-dual-locations.php';
+        require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-companion-locations.php';
         require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-importer.php';
         require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-planning.php';
         require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-area-sync.php';

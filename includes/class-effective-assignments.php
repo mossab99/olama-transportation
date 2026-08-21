@@ -31,6 +31,7 @@ class Olama_Transportation_Effective_Assignments
         // Keep the academic demand available for planning, but separately track
         // the students who actually have an active Core transportation record.
         $transport_counts = self::transportation_counts($study_year, $demand_rows, $include_all_students ? 'academic_registration_fallback' : $mode);
+        $transport_kg_g1_counts = self::transportation_kg_g1_counts($study_year, $direction, $demand_rows, $include_all_students ? 'academic_registration_fallback' : $mode);
 
         $areas_table = Olama_Transportation_DB::table('major_areas');
         $allocation_table = Olama_Transportation_DB::table('area_bus_assignments');
@@ -45,6 +46,7 @@ class Olama_Transportation_Effective_Assignments
             $area['family_count'] = 0;
             $area['student_count'] = 0;
             $area['transportation_student_count'] = 0;
+            $area['transport_kg_g1_count'] = 0;
             $area['non_transportation_student_count'] = 0;
             $area['missing_location_family_count'] = 0;
             $area_index[$area['id']] = &$area;
@@ -95,6 +97,7 @@ class Olama_Transportation_Effective_Assignments
                 $area_index[$area_id]['student_count'] += $count;
                 $transport_count = (int) ($transport_counts[(string) $row['family_uid']] ?? ($mode === 'transport_enrollments' ? $count : 0));
                 $area_index[$area_id]['transportation_student_count'] += min($count, max(0, $transport_count));
+                $area_index[$area_id]['transport_kg_g1_count'] += min($count, max(0, (int) ($transport_kg_g1_counts[(string) $row['family_uid']] ?? 0)));
                 if (!$valid_location) {
                     $area_index[$area_id]['missing_location_family_count']++;
                 }
@@ -265,5 +268,66 @@ class Olama_Transportation_Effective_Assignments
             $counts[$family_uid] = count($student_ids);
         }
         return $counts;
+    }
+
+    private static function transportation_kg_g1_counts($study_year, $direction, array $demand_rows, $mode)
+    {
+        $counts = array();
+        foreach ($demand_rows as $row) {
+            $family_uid = (string) ($row['family_uid'] ?? '');
+            if ($family_uid !== '') {
+                $counts[$family_uid] = $mode === 'transport_enrollments' ? (int) ($row['transport_kg_g1_count'] ?? 0) : 0;
+            }
+        }
+        if ($mode === 'transport_enrollments' || !function_exists('olama_core')) {
+            return $counts;
+        }
+
+        global $wpdb;
+        $students_by_family = array();
+        $student_uids = array();
+        $transportation = olama_core()->transportation();
+        foreach ($demand_rows as $row) {
+            $family_uid = (string) ($row['family_uid'] ?? '');
+            $family_id = (string) ($row['oracle_family_id'] ?? '');
+            if ($family_uid === '' || $family_id === '') continue;
+            $records = $transportation->get_family($family_id, $study_year);
+            foreach ($records as $record) {
+                if (isset($record['is_active']) && $record['is_active'] !== null && (int) $record['is_active'] !== 1) continue;
+                if ($direction === 'morning' && isset($record['morning_enabled']) && (int) $record['morning_enabled'] !== 1) continue;
+                if ($direction === 'afternoon' && isset($record['afternoon_enabled']) && (int) $record['afternoon_enabled'] !== 1) continue;
+                $student_uid = (string) ($record['student_uid'] ?? '');
+                if ($student_uid === '') continue;
+                $students_by_family[$family_uid][$student_uid] = true;
+                $student_uids[$student_uid] = true;
+            }
+        }
+        if (!$student_uids) return $counts;
+
+        $years = olama_core()->read_models()->table('student_years');
+        $uids = array_keys($student_uids);
+        $placeholders = implode(',', array_fill(0, count($uids), '%s'));
+        $alternate = strpos($study_year, '/') !== false ? str_replace('/', '-', $study_year) : str_replace('-', '/', $study_year);
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT student_uid,class_name FROM {$years} WHERE student_uid IN ({$placeholders}) AND study_year IN (%s,%s)",
+            array_merge($uids, array($study_year, $alternate))
+        ), ARRAY_A);
+        $grade_by_student = array();
+        foreach ($rows as $row) {
+            $grade_by_student[(string) $row['student_uid']] = (string) $row['class_name'];
+        }
+        foreach ($students_by_family as $family_uid => $family_students) {
+            foreach (array_keys($family_students) as $student_uid) {
+                if (self::is_transport_kg_g1_grade($grade_by_student[$student_uid] ?? '')) $counts[$family_uid]++;
+            }
+        }
+        return $counts;
+    }
+
+    private static function is_transport_kg_g1_grade($grade)
+    {
+        $grade = function_exists('mb_strtolower') ? mb_strtolower(trim((string) $grade), 'UTF-8') : strtolower(trim((string) $grade));
+        $grade = preg_replace('/\s+/u', ' ', $grade);
+        return in_array($grade, array('kg1','kg 1','kg-1','kg2','kg 2','kg-2','تمهيدي','بستان','الصف الأول','الصف الاول','صف أول','صف اول','الأول','الاول','grade 1','first grade','1'), true);
     }
 }

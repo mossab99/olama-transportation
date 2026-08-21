@@ -19,7 +19,7 @@ class Olama_Transportation_Repository
         ),
         'family-stops' => array(
             'table' => 'family_stops',
-            'fields' => array('family_uid', 'oracle_family_id', 'latitude', 'longitude', 'maps_url', 'address_text', 'area_text', 'major_area_id', 'approved_stop_id', 'source', 'verification_status', 'verified_by', 'verified_at', 'notes'),
+            'fields' => array('family_uid', 'oracle_family_id', 'latitude', 'longitude', 'location_mode', 'arrival_latitude', 'arrival_longitude', 'departure_latitude', 'departure_longitude', 'arrival_major_area_id', 'departure_major_area_id', 'maps_url', 'address_text', 'area_text', 'major_area_id', 'approved_stop_id', 'source', 'verification_status', 'verified_by', 'verified_at', 'notes'),
             'required' => array('oracle_family_id'),
         ),
         'area-mappings' => array(
@@ -117,11 +117,11 @@ class Olama_Transportation_Repository
         if (isset($clean['verification_status']) && !in_array($clean['verification_status'], array('needs_review', 'approved', 'rejected'), true)) {
             return new WP_Error('invalid_verification_status', __('Invalid family stop verification status.', 'olama-transportation'));
         }
-        if (isset($clean['latitude']) && (!is_numeric($clean['latitude']) || $clean['latitude'] < -90 || $clean['latitude'] > 90)) {
-            return new WP_Error('invalid_latitude', __('Invalid latitude.', 'olama-transportation'));
+        foreach (array('latitude','arrival_latitude','departure_latitude') as $field) {
+            if (isset($clean[$field]) && $clean[$field] !== null && (!is_numeric($clean[$field]) || $clean[$field] < -90 || $clean[$field] > 90)) return new WP_Error('invalid_latitude', __('Invalid latitude.', 'olama-transportation'));
         }
-        if (isset($clean['longitude']) && (!is_numeric($clean['longitude']) || $clean['longitude'] < -180 || $clean['longitude'] > 180)) {
-            return new WP_Error('invalid_longitude', __('Invalid longitude.', 'olama-transportation'));
+        foreach (array('longitude','arrival_longitude','departure_longitude') as $field) {
+            if (isset($clean[$field]) && $clean[$field] !== null && (!is_numeric($clean[$field]) || $clean[$field] < -180 || $clean[$field] > 180)) return new WP_Error('invalid_longitude', __('Invalid longitude.', 'olama-transportation'));
         }
 
         $table = Olama_Transportation_DB::table($definition['table']);
@@ -171,7 +171,7 @@ class Olama_Transportation_Repository
     {
         $clean = array();
         $integer_fields = array('major_area_id', 'approved_stop_id', 'verified_by', 'arrival_radius_m', 'service_duration_seconds', 'academic_year_id', 'morning_enabled', 'afternoon_enabled', 'pickup_family_stop_id', 'dropoff_family_stop_id', 'bus_id', 'trip_number', 'is_locked');
-        $decimal_fields = array('latitude', 'longitude');
+        $decimal_fields = array('latitude', 'longitude', 'arrival_latitude', 'arrival_longitude', 'departure_latitude', 'departure_longitude');
         $textarea_fields = array('notes', 'access_notes', 'boundary_geojson', 'address_text');
         foreach ($fields as $field) {
             if (!array_key_exists($field, $data)) {

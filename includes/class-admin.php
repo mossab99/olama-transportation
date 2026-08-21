@@ -62,6 +62,8 @@ class Olama_Transportation_Admin
             'planning'    => Olama_School_Helpers::translate('Area Coverage'),
             'routes'      => Olama_School_Helpers::translate('Routes'),
             'import'      => Olama_School_Helpers::translate('Family Locations'),
+            'dual'        => Olama_School_Helpers::translate('Dual Locations'),
+            'companions'  => Olama_School_Helpers::translate('Companion Locations'),
             'settings'    => Olama_School_Helpers::translate('Settings'),
         );
 
@@ -84,19 +86,30 @@ class Olama_Transportation_Admin
         $routes = array();
         $route_trips = array();
         $registered_families = array();
+        $dual_locations = array('items'=>array(),'trips'=>array(),'metrics'=>array());
+        $all_family_locations = array();
+        $dual_family_lookup = array();
+        $companion_locations = array('items'=>array());
         $settings = get_option('olama_transportation_settings', array());
 
         if ($active_tab === 'buses') {
             $drivers = Olama_Transportation_Bus::get_available_drivers();
             $areas = Olama_Transportation_Repository::list_items('areas', array('per_page' => 500, 'status' => 'active'));
         }
-        if (in_array($active_tab, array('overview', 'areas', 'planning', 'import'), true) && $selected_year_id) {
+        if (in_array($active_tab, array('overview', 'areas', 'planning', 'import', 'dual', 'companions'), true) && $selected_year_id) {
             $summary = Olama_Transportation_Planning::report_summary($selected_year_id);
             $areas = Olama_Transportation_Repository::list_items('areas', array('per_page' => 500));
             $family_stops = Olama_Transportation_Repository::list_items('family-stops', array('per_page' => 100));
             if ($active_tab === 'import') {
                 $areas = Olama_Transportation_Area_Sync::selectable_areas();
             }
+            if ($active_tab === 'dual') {
+                $dual_locations = Olama_Transportation_Dual_Locations::list($selected_year_id);
+                $all_family_locations = Olama_Transportation_Family_Locations::admin_list($selected_year_id, array('per_page'=>100));
+                $dual_family_lookup = Olama_Transportation_Family_Locations::registered_families($selected_year_id);
+                $areas = Olama_Transportation_Area_Sync::selectable_areas();
+            }
+            if ($active_tab === 'companions') $companion_locations = Olama_Transportation_Companion_Locations::list($selected_year_id);
         }
         if ($active_tab === 'areas') {
             $companions = Olama_Transportation_Bus::get_available_companions();
@@ -172,6 +185,11 @@ class Olama_Transportation_Admin
         ));
 
         $tab = isset($_GET['tab']) ? sanitize_key(wp_unslash($_GET['tab'])) : 'overview';
+        $dual_year_id = isset($_GET['academic_year_id']) ? absint($_GET['academic_year_id']) : 0;
+        if (!$dual_year_id) {
+            $dual_active_year = Olama_School_Academic::get_active_year();
+            $dual_year_id = $dual_active_year ? absint($dual_active_year->id) : 0;
+        }
         if ($tab === 'planning') {
             $this->enqueue_style('olama-leaflet', 'assets/vendor/leaflet/leaflet.css');
             $this->enqueue_style('olama-geographic-planner', 'assets/css/geographic-planner.css', array('olama-leaflet'));
@@ -258,11 +276,11 @@ class Olama_Transportation_Admin
                     'clear'=>Olama_School_Helpers::translate('Clear'),'details'=>Olama_School_Helpers::translate('Details'),'map'=>Olama_School_Helpers::translate('Map'),
                     'missingLocation'=>Olama_School_Helpers::translate('Missing Location'),'invalidLocation'=>Olama_School_Helpers::translate('Invalid Location'),
                     'needsReview'=>Olama_School_Helpers::translate('Needs review'),'approved'=>Olama_School_Helpers::translate('Approved'),
-                    'morning'=>Olama_School_Helpers::translate('Morning'),'afternoon'=>Olama_School_Helpers::translate('Afternoon'),'trip'=>Olama_School_Helpers::translate('Trip'),
+                    'morning'=>Olama_School_Helpers::translate('Morning'),'afternoon'=>Olama_School_Helpers::translate('Afternoon'),'arrival'=>Olama_School_Helpers::translate('Arrival'),'departure'=>Olama_School_Helpers::translate('Departure'),'trip'=>Olama_School_Helpers::translate('Trip'),
                     'assigned'=>Olama_School_Helpers::translate('Assigned'),'missingArea'=>Olama_School_Helpers::translate('Missing Area'),
                     'areaNotAllocated'=>Olama_School_Helpers::translate('Area Not Allocated'),'capacityProblem'=>Olama_School_Helpers::translate('Capacity Problem'),
                     'noMatches'=>Olama_School_Helpers::translate('No matching families. Adjust or reset the filters.'),'selected'=>Olama_School_Helpers::translate('selected'),
-                    'bulkComplete'=>Olama_School_Helpers::translate('%d families updated successfully.'),'location'=>Olama_School_Helpers::translate('WhatsApp Location'),
+                    'bulkComplete'=>Olama_School_Helpers::translate('%d families updated successfully.'),'location'=>Olama_School_Helpers::translate('Default Location'),'defaultLocation'=>Olama_School_Helpers::translate('Default location'),'twoLocations'=>Olama_School_Helpers::translate('Two locations'),'locationType'=>Olama_School_Helpers::translate('Location setup'),'locationHelp'=>Olama_School_Helpers::translate('Use the default location for both trips, or enter separate arrival and departure locations.'),'arrivalLocation'=>Olama_School_Helpers::translate('Arrival location'),'departureLocation'=>Olama_School_Helpers::translate('Departure location'),
                     'saveLocation'=>Olama_School_Helpers::translate('Save Location'),'coordinates'=>Olama_School_Helpers::translate('Coordinates'),
                     'phone'=>Olama_School_Helpers::translate('Phone'),'source'=>Olama_School_Helpers::translate('Source'),'assignmentSource'=>Olama_School_Helpers::translate('Assignment Source'),
                     'assignedAt'=>Olama_School_Helpers::translate('Assigned At'),'notes'=>Olama_School_Helpers::translate('Notes'),'unassigned'=>Olama_School_Helpers::translate('Unassigned'),
@@ -275,6 +293,19 @@ class Olama_Transportation_Admin
                     'networkError'=>Olama_School_Helpers::translate('The request failed. Check the connection and try again.'),
                 ),
             ));
+        } elseif ($tab === 'dual') {
+            $path = OLAMA_TRANSPORTATION_PATH . 'assets/js/dual-locations.js';
+            wp_enqueue_script('olama-dual-locations', OLAMA_TRANSPORTATION_URL . 'assets/js/dual-locations.js', array(), $this->asset_version($path), true);
+            wp_localize_script('olama-dual-locations', 'olamaDualLocations', array(
+                'restUrl'=>esc_url_raw(rest_url('olama-transportation/v1/')), 'restNonce'=>wp_create_nonce('wp_rest'), 'canManage'=>Olama_School_Permissions::can('olama_manage_transport_buses'), 'year'=>$dual_year_id,
+                'areas'=>array_values(array_map(function($area){return array('id'=>(int)$area['id'],'name'=>$area['name']);}, Olama_Transportation_Area_Sync::selectable_areas())),
+                'families'=>array_values(array_map(function($family){return array('uid'=>(string)$family['family_uid'],'oracle_id'=>(string)$family['oracle_family_id'],'name'=>(string)$family['family_name']);}, Olama_Transportation_Family_Locations::registered_families($dual_year_id))),
+                'i18n'=>array('loading'=>Olama_School_Helpers::translate('Loading…'),'saved'=>Olama_School_Helpers::translate('Saved.'),'failed'=>Olama_School_Helpers::translate('Operation failed.'),'unassigned'=>Olama_School_Helpers::translate('Unassigned'),'selectTrip'=>Olama_School_Helpers::translate('Select an existing draft trip'),'arrival'=>Olama_School_Helpers::translate('Arrival / Morning'),'departure'=>Olama_School_Helpers::translate('Departure / Afternoon'),'assign'=>Olama_School_Helpers::translate('Assign to trip'),'assigned'=>Olama_School_Helpers::translate('Assigned'),'partial'=>Olama_School_Helpers::translate('Partially assigned'),'unassignedStatus'=>Olama_School_Helpers::translate('Not assigned'),'noFamilies'=>Olama_School_Helpers::translate('No dual-location families yet.')),
+            ));
+        } elseif ($tab === 'companions') {
+            $path = OLAMA_TRANSPORTATION_PATH . 'assets/js/companion-locations.js';
+            wp_enqueue_script('olama-companion-locations', OLAMA_TRANSPORTATION_URL . 'assets/js/companion-locations.js', array(), $this->asset_version($path), true);
+            wp_localize_script('olama-companion-locations', 'olamaCompanionLocations', array('restUrl'=>esc_url_raw(rest_url('olama-transportation/v1/')),'restNonce'=>wp_create_nonce('wp_rest'),'year'=>$selected_year_id,'canManage'=>Olama_School_Permissions::can('olama_manage_transport_buses'),'i18n'=>array('saving'=>Olama_School_Helpers::translate('Saving…'),'saved'=>Olama_School_Helpers::translate('Saved.'),'failed'=>Olama_School_Helpers::translate('Save failed.'),'missing'=>Olama_School_Helpers::translate('Enter a valid location first.'),'noTrips'=>Olama_School_Helpers::translate('No attached trips.'))));
         }
         if ($tab === 'areas') {
             $trip_companions = Olama_Transportation_Bus::get_available_companions();
