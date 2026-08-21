@@ -108,22 +108,6 @@ class Olama_Transportation_REST
         register_rest_route(self::NS, '/planning/areas/(?P<id>\d+)/families', array(
             'methods' => WP_REST_Server::READABLE, 'callback' => array($this, 'area_families'), 'permission_callback' => array($this, 'can_view'),
         ));
-        register_rest_route(self::NS, '/planning/trip-slots', array(
-            'methods' => WP_REST_Server::READABLE, 'callback' => array($this, 'planning_trip_slots'), 'permission_callback' => array($this, 'can_view'),
-        ));
-        register_rest_route(self::NS, '/planning/groups', array(
-            array('methods' => WP_REST_Server::READABLE, 'callback' => array($this, 'planning_groups'), 'permission_callback' => array($this, 'can_view')),
-            array('methods' => WP_REST_Server::CREATABLE, 'callback' => array($this, 'create_planning_group'), 'permission_callback' => array($this, 'can_manage')),
-        ));
-        register_rest_route(self::NS, '/planning/groups/(?P<id>\d+)', array(
-            array('methods' => WP_REST_Server::READABLE, 'callback' => array($this, 'get_planning_group'), 'permission_callback' => array($this, 'can_view')),
-            array('methods' => WP_REST_Server::EDITABLE, 'callback' => array($this, 'update_planning_group'), 'permission_callback' => array($this, 'can_manage')),
-        ));
-        foreach (array('approve', 'revert', 'archive') as $action) {
-            register_rest_route(self::NS, '/planning/groups/(?P<id>\d+)/' . $action, array(
-                'methods' => WP_REST_Server::CREATABLE, 'callback' => array($this, $action . '_planning_group'), 'permission_callback' => array($this, 'can_approve'),
-            ));
-        }
         register_rest_route(self::NS, '/imports/family-stops', array(
             'methods' => WP_REST_Server::CREATABLE, 'callback' => array($this, 'import_family_stops'), 'permission_callback' => array($this, 'can_manage'),
         ));
@@ -354,52 +338,6 @@ class Olama_Transportation_REST
             ));
         }
         return $this->respond(Olama_Transportation_Family_Area_Assignments::bulk_assign($input['family_stop_ids'] ?? array(), $input['major_area_id'] ?? 0));
-    }
-
-    public function planning_trip_slots(WP_REST_Request $request)
-    {
-        $year = absint($request->get_param('academic_year_id'));
-        $direction = sanitize_key($request->get_param('direction') ?: 'morning');
-        if (!$year || !in_array($direction, array('morning', 'afternoon'), true)) {
-            return new WP_Error('invalid_trip_slot_request', __('A valid academic year and direction are required.', 'olama-transportation'), array('status' => 400));
-        }
-        return rest_ensure_response(Olama_Transportation_Geographic_Planning::trip_slots($year, $direction, absint($request->get_param('bus_id'))));
-    }
-
-    public function planning_groups(WP_REST_Request $request)
-    {
-        return rest_ensure_response(Olama_Transportation_Geographic_Planning::list_groups($request->get_params()));
-    }
-
-    public function get_planning_group(WP_REST_Request $request)
-    {
-        $group = Olama_Transportation_Geographic_Planning::get($request['id']);
-        return $group ? rest_ensure_response($group) : new WP_Error('planning_group_not_found', __('Planning group was not found.', 'olama-transportation'), array('status' => 404));
-    }
-
-    public function create_planning_group(WP_REST_Request $request)
-    {
-        return $this->respond(Olama_Transportation_Geographic_Planning::save($request->get_json_params() ?: $request->get_params()));
-    }
-
-    public function update_planning_group(WP_REST_Request $request)
-    {
-        return $this->respond(Olama_Transportation_Geographic_Planning::save($request->get_json_params() ?: $request->get_params(), $request['id']));
-    }
-
-    public function approve_planning_group(WP_REST_Request $request)
-    {
-        return $this->respond(Olama_Transportation_Geographic_Planning::approve($request['id']));
-    }
-
-    public function revert_planning_group(WP_REST_Request $request)
-    {
-        return $this->respond(Olama_Transportation_Geographic_Planning::revert($request['id']));
-    }
-
-    public function archive_planning_group(WP_REST_Request $request)
-    {
-        return $this->respond(Olama_Transportation_Geographic_Planning::archive($request['id']));
     }
 
     public function import_family_stops(WP_REST_Request $request)

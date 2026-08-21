@@ -123,6 +123,7 @@ class Olama_Transportation_Effective_Assignments
                 'bus_number' => $assignment ? (string) $assignment['bus_number'] : '',
                 'trip_number' => $assignment ? $assignment['trip_number'] : null,
                 'student_count' => $count,
+                'transportation_student_count' => min($count, max(0, (int) ($transport_counts[(string) $row['family_uid']] ?? ($mode === 'transport_enrollments' ? $count : 0)))),
                 'effective_capacity' => $assignment ? $assignment['effective_capacity'] : 0,
                 'demand_mode' => $mode,
                 'assignment_status' => $status,

@@ -60,7 +60,8 @@ $translate = array('Olama_School_Helpers', 'translate');
                 </div>
                 <div id="areas-feedback" class="olama-operation-result" aria-live="polite"></div>
                 <section class="olama-trip-board"><div class="olama-trip-board-head"><h3><?php echo esc_html($translate('Trips')); ?></h3><span id="olama-trip-board-summary"></span></div><div id="olama-trip-board-list" class="olama-trip-board-list"></div></section>
-                <details class="olama-area-demand-panel" open><summary><?php echo esc_html($translate('Area demand and assignments')); ?></summary><div class="olama-area-table-wrap"><table class="wp-list-table widefat striped olama-area-table"><thead><tr><th><?php echo esc_html($translate('Oracle Area')); ?></th><th><?php echo esc_html($translate('Transportation Coverage')); ?></th><th><?php echo esc_html($translate('Not registered in transportation')); ?></th><th><?php echo esc_html($translate('Assigned Trips')); ?></th><th><?php echo esc_html($translate('Display Settings')); ?></th></tr></thead><tbody id="areas-body"><tr><td colspan="5"><?php echo esc_html($translate('Loading...')); ?></td></tr></tbody></table></div></details>
+                <details class="olama-area-demand-panel" open><summary><?php echo esc_html($translate('Area demand and assignments')); ?></summary><div class="olama-area-table-wrap"><table class="wp-list-table widefat striped olama-area-table"><thead><tr><th><?php echo esc_html($translate('Oracle Area')); ?></th><th><?php echo esc_html($translate('Walking Students')); ?></th><th><?php echo esc_html($translate('Transportation Coverage')); ?></th><th><?php echo esc_html($translate('Assigned Trips')); ?></th><th><?php echo esc_html($translate('Display Settings')); ?></th></tr></thead><tbody id="areas-body"><tr><td colspan="5"><?php echo esc_html($translate('Loading...')); ?></td></tr></tbody></table></div></details>
+                <dialog id="olama-area-family-dialog" class="olama-area-family-dialog"><form method="dialog"><button class="olama-trip-wizard-close" aria-label="Close">×</button></form><h2 id="olama-area-family-title">Families</h2><div id="olama-area-family-list"></div></dialog>
                 <dialog id="olama-trip-wizard-dialog" class="olama-trip-wizard-dialog" aria-labelledby="olama-trip-wizard-title">
                     <div class="olama-trip-wizard" data-step="1">
                         <header class="olama-trip-wizard-head"><div><h2 id="olama-trip-wizard-title"></h2><p id="olama-trip-wizard-context"></p></div><button type="button" class="olama-trip-wizard-close" aria-label="<?php echo esc_attr($translate('Close')); ?>">×</button></header>
@@ -141,7 +142,7 @@ $translate = array('Olama_School_Helpers', 'translate');
         <?php if ($active_tab === 'planning'): ?>
             <div id="olama-area-planner" class="olama-card" data-year-id="<?php echo intval($selected_year_id); ?>">
                 <div class="olama-planner-header">
-                    <div><h2><?php echo esc_html($translate('Area Mapping')); ?></h2><p class="description"><?php echo esc_html($translate('View family locations and their planning areas. Assign students and buses in the Student Assignments and Areas tabs.')); ?></p></div>
+                    <div><h2><?php echo esc_html($translate('Area Coverage')); ?></h2><p class="description"><?php echo esc_html($translate('View family locations and their planning areas. Assign students and buses from the Trips tab.')); ?></p></div>
                     <div><button type="button" id="planner-refresh-map" class="button"><?php echo esc_html($translate('Refresh map')); ?></button></div>
                 </div>
                 <div id="planner-demand-status" class="olama-planner-message" aria-live="polite"></div>
@@ -173,31 +174,25 @@ $translate = array('Olama_School_Helpers', 'translate');
                 </div>
                 <div id="area-family-detail" class="olama-family-detail" hidden><div class="olama-planner-header"><h3 id="area-family-title"></h3><button type="button" id="area-family-close" class="button"><?php echo esc_html($translate('Close')); ?></button></div><div class="olama-area-filters"><label><?php echo esc_html($translate('Search families')); ?><input type="search" id="area-family-search"></label><label><?php echo esc_html($translate('Location')); ?><select id="area-family-location"><option value="all"><?php echo esc_html($translate('All')); ?></option><option value="valid"><?php echo esc_html($translate('Valid')); ?></option><option value="missing"><?php echo esc_html($translate('Missing')); ?></option></select></label><label><?php echo esc_html($translate('Allocation')); ?><select id="area-family-allocation"><option value="all"><?php echo esc_html($translate('All')); ?></option><option value="assigned"><?php echo esc_html($translate('Assigned')); ?></option><option value="problem"><?php echo esc_html($translate('Problem')); ?></option></select></label><label><?php echo esc_html($translate('Move selected to')); ?><select id="area-family-move-area"></select></label><button type="button" id="area-family-bulk-move" class="button button-primary"><?php echo esc_html($translate('Move selected')); ?></button></div><div id="area-family-list"></div></div>
             </div>
-            <details class="olama-card olama-card-spaced"><summary><strong><?php echo esc_html($translate('Legacy Geographic Groups — Historical Only')); ?></strong></summary>
-                <p class="description"><?php echo esc_html($translate('These records are no longer used to resolve effective transportation assignments.')); ?></p>
-                <table class="wp-list-table widefat striped"><thead><tr><th><?php echo esc_html($translate('Group')); ?></th><th><?php echo esc_html($translate('Academic Year')); ?></th><th><?php echo esc_html($translate('Direction')); ?></th><th><?php echo esc_html($translate('Bus')); ?></th><th><?php echo esc_html($translate('Trip')); ?></th><th><?php echo esc_html($translate('Families')); ?></th><th><?php echo esc_html($translate('Students')); ?></th><th><?php echo esc_html($translate('Status')); ?></th><th><?php echo esc_html($translate('Updated')); ?></th></tr></thead><tbody>
-                <?php foreach (Olama_Transportation_Geographic_Planning::list_groups(array('include_archived' => true)) as $legacy): ?><tr><td><?php echo esc_html($legacy['group_name']); ?></td><td><?php echo intval($legacy['academic_year_id']); ?></td><td><?php echo esc_html($legacy['direction']); ?></td><td><?php echo esc_html($legacy['bus_number'] ?: $legacy['bus_id']); ?></td><td><?php echo intval($legacy['trip_number']); ?></td><td><?php echo intval($legacy['family_count']); ?></td><td><?php echo intval($legacy['student_count']); ?></td><td><?php echo esc_html($legacy['status']); ?></td><td><?php echo esc_html($legacy['updated_at']); ?></td></tr><?php endforeach; ?>
-                </tbody></table>
-            </details>
         <?php endif; ?>
 
         <?php if ($active_tab === 'routes'): ?>
-            <div class="olama-card">
-                <div class="olama-transportation-toolbar"><h2><?php echo esc_html($translate('Route Versions')); ?></h2></div>
-                <p class="description"><?php echo esc_html($translate('Approved geographic planning groups identify the bus, direction, and trip, but remain separate from route versions until route generation is implemented.')); ?></p>
+            <div class="olama-card olama-routes-page">
+                <div class="olama-routes-hero"><div><span class="olama-section-kicker"><?php echo esc_html($translate('Transportation')); ?></span><h2><?php echo esc_html($translate('Route Versions')); ?></h2><p><?php echo esc_html($translate('Build, review and publish the stop sequence for each configured trip.')); ?></p></div><div class="olama-route-hero-icon">↗</div></div>
+                <p class="description"><?php echo esc_html($translate('Select a configured trip, then create and optimize a version of its route. The trip remains the source of students and families.')); ?></p>
                 <form id="route-form" class="olama-inline-form olama-route-form">
                     <input type="hidden" name="academic_year_id" value="<?php echo intval($selected_year_id); ?>" />
-                    <input name="name" required placeholder="<?php echo esc_attr($translate('Route Name')); ?>" />
-                    <select name="bus_id" required><option value=""><?php echo esc_html($translate('Select Bus')); ?></option><?php foreach ($buses as $bus): ?><option value="<?php echo intval($bus->id); ?>"><?php echo esc_html($bus->bus_number); ?></option><?php endforeach; ?></select>
-                    <select name="direction" required><option value="morning"><?php echo esc_html($translate('Morning')); ?></option><option value="afternoon"><?php echo esc_html($translate('Afternoon')); ?></option></select>
-                    <select name="stop_ids[]" multiple required class="olama-stops-select"><?php foreach ($stops as $stop): ?><option value="<?php echo intval($stop['id']); ?>"><?php echo esc_html($stop['name']); ?></option><?php endforeach; ?></select>
+                    <select name="shared_trip_id" id="route-trip-select" required><option value=""><?php echo esc_html($translate('Select Trip')); ?></option><?php foreach ($route_trips as $trip): ?><option value="<?php echo intval($trip['id']); ?>" data-bus-id="<?php echo intval($trip['bus_id']); ?>" data-direction="<?php echo esc_attr($trip['direction']); ?>"><?php echo esc_html($trip['name'].' · '.($trip['direction']==='morning' ? 'Arrival' : 'Departure').' · '.($trip['bus_number'] ?: 'Bus unassigned')); ?></option><?php endforeach; ?></select>
+                    <input type="hidden" name="bus_id" id="route-bus-id" /><input type="hidden" name="direction" id="route-direction" />
+                    <span class="description olama-route-stop-source"><?php echo esc_html($translate('Family stops will be loaded automatically from the selected trip.')); ?></span>
                     <button class="button button-primary" type="submit"><?php echo esc_html($translate('Create Draft')); ?></button>
                 </form>
                 <table class="wp-list-table widefat fixed striped">
-                    <thead><tr><th><?php echo esc_html($translate('Name')); ?></th><th><?php echo esc_html($translate('Bus')); ?></th><th><?php echo esc_html($translate('Direction')); ?></th><th><?php echo esc_html($translate('Version')); ?></th><th><?php echo esc_html($translate('Status')); ?></th><th><?php echo esc_html($translate('Actions')); ?></th></tr></thead>
-                    <tbody><?php foreach ($routes as $route): ?><tr><td><?php echo esc_html($route['name']); ?></td><td><?php echo intval($route['bus_id']); ?></td><td><?php echo esc_html($route['direction']); ?></td><td><?php echo intval($route['version_number']); ?></td><td><?php echo esc_html($route['status']); ?></td><td><?php if ($route['status'] === 'draft'): ?><button class="button olama-optimize-route" data-id="<?php echo intval($route['id']); ?>"><?php echo esc_html($translate('Optimize')); ?></button> <button class="button button-primary olama-publish-route" data-id="<?php echo intval($route['id']); ?>"><?php echo esc_html($translate('Publish')); ?></button><?php endif; ?></td></tr><?php endforeach; ?><?php if (!$routes): ?><tr><td colspan="6"><?php echo esc_html($translate('No route versions.')); ?></td></tr><?php endif; ?></tbody>
+                    <thead><tr><th><?php echo esc_html($translate('Trip')); ?></th><th><?php echo esc_html($translate('Bus')); ?></th><th><?php echo esc_html($translate('Direction')); ?></th><th><?php echo esc_html($translate('Stops')); ?></th><th><?php echo esc_html($translate('Distance')); ?></th><th><?php echo esc_html($translate('Version')); ?></th><th><?php echo esc_html($translate('Status')); ?></th><th><?php echo esc_html($translate('Actions')); ?></th></tr></thead>
+                    <tbody><?php foreach ($routes as $route): ?><tr><td><strong><?php echo esc_html($route['trip']['name'] ?? $route['name']); ?></strong></td><td><span class="olama-route-bus-pill">Bus <?php echo intval($route['bus_id']); ?></span></td><td><span class="olama-route-direction <?php echo esc_attr($route['direction']); ?>"><?php echo esc_html($route['direction']==='morning' ? 'Arrival' : 'Departure'); ?></span></td><td><?php echo intval($route['stop_count'] ?? 0); ?></td><td><?php echo $route['total_distance_m'] ? esc_html(round(((int)$route['total_distance_m']) / 1000, 1).' km') : '—'; ?></td><td>v<?php echo intval($route['version_number']); ?></td><td><span class="olama-route-status <?php echo esc_attr($route['status']); ?>"><?php echo esc_html(ucfirst($route['status'])); ?></span></td><td class="olama-route-actions"><button type="button" class="button olama-route-icon-button olama-open-route" title="<?php echo esc_attr($translate('Open')); ?>" aria-label="<?php echo esc_attr($translate('Open')); ?>" data-id="<?php echo intval($route['id']); ?>"><span class="dashicons dashicons-visibility" aria-hidden="true"></span></button><?php if ($route['status'] === 'draft'): ?><button type="button" class="button olama-route-icon-button olama-optimize-route" title="<?php echo esc_attr($translate('Optimize')); ?>" aria-label="<?php echo esc_attr($translate('Optimize')); ?>" data-id="<?php echo intval($route['id']); ?>"><span class="dashicons dashicons-controls-repeat" aria-hidden="true"></span></button><button type="button" class="button button-primary olama-route-icon-button olama-publish-route" title="<?php echo esc_attr($translate('Publish')); ?>" aria-label="<?php echo esc_attr($translate('Publish')); ?>" data-id="<?php echo intval($route['id']); ?>"><span class="dashicons dashicons-yes-alt" aria-hidden="true"></span></button><?php endif; ?></td></tr><?php endforeach; ?><?php if (!$routes): ?><tr><td colspan="8"><?php echo esc_html($translate('No route versions.')); ?></td></tr><?php endif; ?></tbody>
                 </table>
             </div>
+            <dialog id="olama-route-editor" class="olama-route-editor"><form method="dialog"><button class="olama-trip-wizard-close" aria-label="Close">×</button></form><h2 id="olama-route-editor-title"></h2><div id="olama-route-editor-status" class="olama-operation-result"></div><div class="olama-route-editor-grid"><ol id="olama-route-stop-list"></ol><div id="olama-route-map"></div></div><button type="button" class="button" id="olama-rebuild-route"><?php echo esc_html($translate('Rebuild from Trip')); ?></button> <button type="button" class="button button-primary" id="olama-save-route-order"><?php echo esc_html($translate('Save Stop Order')); ?></button></dialog>
         <?php endif; ?>
 
         <?php if ($active_tab === 'import'): ?>
@@ -476,41 +471,5 @@ $translate = array('Olama_School_Helpers', 'translate');
             </div>
         <?php endif; ?>
 
-        <?php if ($active_tab === 'assignments'): ?>
-            <div class="olama-card">
-                <h2><?php echo esc_html($translate('Student Assignments')); ?></h2>
-                <p class="notice notice-info inline"><?php echo esc_html($translate('Define bus trips first. Then select a bus and trip to choose students from its attached areas.')); ?></p>
-                <div class="olama-form-grid">
-                    <p><label><?php echo esc_html($translate('Academic Year')); ?></label><select id="assignment-year-filter" class="widefat"><?php foreach ($years as $year): ?><option value="<?php echo intval($year->id); ?>" <?php selected($selected_year_id, $year->id); ?>><?php echo esc_html($year->year_name); ?></option><?php endforeach; ?></select></p>
-                    <p><label><?php echo esc_html($translate('Select Bus')); ?></label><select id="assignment-bus-filter" class="widefat"><option value=""><?php echo esc_html($translate('Select a bus')); ?></option><?php foreach ($buses as $bus): ?><option value="<?php echo intval($bus->id); ?>" <?php selected($selected_bus_id, $bus->id); ?>><?php echo esc_html($bus->bus_number . ' - ' . ($bus->government_number ?: $translate('No bus number'))); ?></option><?php endforeach; ?></select></p>
-                    <p><label><?php echo esc_html($translate('Trip #')); ?></label><select id="assignment-trip-filter" class="widefat" disabled><option value=""><?php echo esc_html($translate('Select bus first')); ?></option></select></p>
-                </div>
-
-                <div id="assignment-content" class="olama-assignment-content">
-                    <div class="olama-transportation-toolbar">
-                        <div><strong><?php echo esc_html($translate('Attached Areas')); ?>:</strong> <span id="assignment-area-list">—</span></div>
-                        <div><select id="assignment-attach-area"><option value=""><?php echo esc_html($translate('Attach another area')); ?></option></select> <button type="button" class="button" id="assignment-attach-area-btn" disabled><?php echo esc_html($translate('Attach Area')); ?></button></div>
-                    </div>
-                    <div id="capacity-info" class="olama-capacity-info">
-                        <strong><?php echo esc_html($translate('Capacity')); ?>:</strong> <span id="capacity-text">0/0</span>
-                        <div class="olama-capacity-track"><div id="capacity-bar"></div></div>
-                    </div>
-
-                    <div class="olama-transportation-toolbar">
-                        <h3><?php echo esc_html($translate('Students in Attached Areas')); ?></h3>
-                        <button type="button" class="button button-primary" id="assign-selected-btn"><?php echo esc_html($translate('Save Student Selection')); ?></button>
-                    </div>
-                    <table class="wp-list-table widefat fixed striped">
-                        <thead><tr><th><input type="checkbox" id="select-all-students" /></th><th><?php echo esc_html($translate('Student Name')); ?></th><th><?php echo esc_html($translate('Student ID')); ?></th><th><?php echo esc_html($translate('Area')); ?></th><th><?php echo esc_html($translate('Grade')); ?></th><th><?php echo esc_html($translate('Section')); ?></th></tr></thead>
-                        <tbody id="unassigned-students-body"><tr><td colspan="6"><?php echo esc_html($translate('Loading...')); ?></td></tr></tbody>
-                    </table>
-                </div>
-
-                <div id="no-bus-selected" class="olama-empty-state">
-                    <span class="dashicons dashicons-car"></span>
-                    <p><?php echo esc_html($translate('Select a bus and a defined trip to manage student assignments')); ?></p>
-                </div>
-            </div>
-        <?php endif; ?>
     </div>
 </div>

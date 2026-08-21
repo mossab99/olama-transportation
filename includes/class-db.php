@@ -278,6 +278,7 @@ class Olama_Transportation_DB
 
         dbDelta("CREATE TABLE {$p}olama_transport_route_versions (
             id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            shared_trip_id bigint(20) UNSIGNED DEFAULT NULL,
             academic_year_id bigint(20) UNSIGNED NOT NULL,
             bus_id bigint(20) UNSIGNED NOT NULL,
             direction varchar(20) NOT NULL,
@@ -294,6 +295,7 @@ class Olama_Transportation_DB
             created_at datetime NOT NULL,
             updated_at datetime NOT NULL,
             PRIMARY KEY  (id),
+            KEY shared_trip (shared_trip_id),
             UNIQUE KEY route_version (academic_year_id, bus_id, direction, version_number),
             KEY published_route (academic_year_id, bus_id, direction, status)
         ) $cc;");

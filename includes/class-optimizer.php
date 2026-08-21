@@ -13,6 +13,9 @@ class Olama_Transportation_Optimizer
         if (!$route || $route['status'] !== 'draft' || count($route['stops']) < 2) {
             return new WP_Error('invalid_route', __('A draft route with at least two stops is required.', 'olama-transportation'));
         }
+        if (!empty($route['needs_recalculation'])) {
+            return new WP_Error('route_needs_recalculation', __('Trip membership or family locations changed. Rebuild the route before optimizing.', 'olama-transportation'));
+        }
         $settings = get_option('olama_transportation_settings', array());
         $provider = sanitize_key($settings['optimizer_provider'] ?? 'manual');
         if ($provider === 'manual') {
@@ -82,6 +85,8 @@ class Olama_Transportation_Optimizer
             $shipments[] = $shipment;
         }
         return array(
+            'trip_id' => !empty($route['shared_trip_id']) ? intval($route['shared_trip_id']) : null,
+            'direction' => $route['direction'],
             'model' => array(
                 'shipments' => $shipments,
                 'vehicles' => array(array(

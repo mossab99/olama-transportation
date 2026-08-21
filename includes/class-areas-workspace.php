@@ -27,10 +27,12 @@ class Olama_Transportation_Areas_Workspace
             $by_area[(int)$trip['major_area_id']][] = $trip;
         }
         $shared_by_area = Olama_Transportation_Shared_Trips::area_contributions($year, $direction);
+        $family_details = self::family_details($year, $resolved['families']);
         foreach ($resolved['areas'] as &$area) {
             $area['area_type'] = in_array($area['area_type'] ?? '', array('main','secondary'), true) ? $area['area_type'] : 'secondary';
             $area['trips'] = $by_area[(int)$area['id']] ?? array();
             $area['shared_trips'] = $shared_by_area[(int)$area['id']] ?? array();
+            $area['family_details'] = $family_details[(int)$area['id']] ?? array();
             $area['assigned_student_count'] = array_sum(array_column($area['shared_trips'], 'area_student_count'));
             $area['unassigned_student_count'] = max(0, (int)$area['transportation_student_count'] - $area['assigned_student_count']);
         }
@@ -41,18 +43,54 @@ class Olama_Transportation_Areas_Workspace
         );
     }
 
+    private static function family_details($year, array $families)
+    {
+        global $wpdb;
+        $study_year = Olama_Transportation_Bus::study_year($year);
+        $alternate = strpos($study_year, '/') !== false ? str_replace('/', '-', $study_year) : str_replace('-', '/', $study_year);
+        $core_families = olama_core()->read_models()->table('families');
+        $students = olama_core()->read_models()->table('students');
+        $student_years = olama_core()->read_models()->table('student_years');
+        $stops = Olama_Transportation_DB::table('family_stops');
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT f.family_uid,f.oracle_family_id,f.father_name,fs.maps_url,fs.latitude,fs.longitude,
+                    sy.student_uid,COALESCE(NULLIF(st.student_name,''),sy.student_uid) student_name,sy.class_name,sy.section_name
+             FROM {$core_families} f LEFT JOIN {$student_years} sy ON sy.family_uid=f.family_uid AND sy.study_year IN (%s,%s)
+             LEFT JOIN {$students} st ON st.student_uid=sy.student_uid
+             LEFT JOIN {$stops} fs ON fs.family_uid=f.family_uid OR (fs.family_uid IS NULL AND fs.oracle_family_id=f.oracle_family_id)
+             ORDER BY f.oracle_family_id,sy.student_uid", $study_year, $alternate), ARRAY_A);
+        $by_uid = array();
+        foreach ($rows as $row) {
+            $uid = (string) $row['family_uid'];
+            if (!isset($by_uid[$uid])) $by_uid[$uid] = array('family_number'=>(string)$row['oracle_family_id'],'father_name'=>(string)$row['father_name'],'maps_url'=>(string)$row['maps_url'],'latitude'=>$row['latitude'],'longitude'=>$row['longitude'],'kids'=>array());
+            if (!empty($row['student_uid'])) $by_uid[$uid]['kids'][] = array('name'=>(string)$row['student_name'],'grade'=>(string)$row['class_name'],'section'=>(string)$row['section_name']);
+        }
+        $out = array();
+        foreach ($families as $family) {
+            $uid = (string)$family['family_uid']; $detail = $by_uid[$uid] ?? array('family_number'=>(string)$family['oracle_family_id'],'father_name'=>'','maps_url'=>'','kids'=>array());
+            if (empty($detail['maps_url']) && $family['latitude'] !== null && $family['longitude'] !== null) $detail['maps_url'] = 'https://www.google.com/maps?q='.rawurlencode($family['latitude'].','.$family['longitude']);
+            $detail['transportation_student_count'] = (int)($family['transportation_student_count'] ?? 0);
+            $detail['student_count'] = (int)$family['student_count'];
+            $out[(int)$family['major_area_id']][] = $detail;
+        }
+        return $out;
+    }
+
     public static function update_area($id, $data)
     {
         global $wpdb;
+        $has_type = array_key_exists('area_type', $data);
         $type = sanitize_key($data['area_type'] ?? 'secondary');
         $color = sanitize_hex_color($data['color'] ?? '');
-        if (!in_array($type, array('main','secondary'), true) || !$color) return new WP_Error('invalid_area_settings', __('Provide a valid area type and color.', 'olama-transportation'), array('status'=>400));
+        if (($has_type && !in_array($type, array('main','secondary'), true)) || !$color) return new WP_Error('invalid_area_settings', __('Provide a valid area color.', 'olama-transportation'), array('status'=>400));
         $table = Olama_Transportation_DB::table('major_areas');
         $before = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$table} WHERE id=%d AND status='active'", absint($id)), ARRAY_A);
         if (!$before) return new WP_Error('area_not_found', __('Active Oracle area was not found.', 'olama-transportation'), array('status'=>404));
         $duplicate = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$table} WHERE color=%s AND id<>%d AND status='active' LIMIT 1", $color, absint($id)));
         if ($duplicate) return new WP_Error('duplicate_area_color', __('Each active area must use a unique color. Choose another basic color.', 'olama-transportation'), array('status'=>409));
-        $wpdb->update($table, array('area_type'=>$type,'color'=>$color,'updated_at'=>current_time('mysql',true)), array('id'=>absint($id)));
+        $update = array('color'=>$color,'updated_at'=>current_time('mysql',true));
+        if ($has_type) $update['area_type'] = $type;
+        $wpdb->update($table, $update, array('id'=>absint($id)));
         $after = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$table} WHERE id=%d", absint($id)), ARRAY_A);
         Olama_Transportation_Audit::record('area_workspace_updated', 'area', $id, $before, $after);
         return $after;

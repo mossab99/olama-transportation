@@ -58,9 +58,8 @@ class Olama_Transportation_Admin
         $allowed_tabs = array(
             'overview'    => Olama_School_Helpers::translate('Overview'),
             'buses'       => Olama_School_Helpers::translate('Buses'),
-            'assignments' => Olama_School_Helpers::translate('Student Assignments'),
-            'areas'       => Olama_School_Helpers::translate('Areas'),
-            'planning'    => Olama_School_Helpers::translate('Area Mapping'),
+            'areas'       => Olama_School_Helpers::translate('Trips'),
+            'planning'    => Olama_School_Helpers::translate('Area Coverage'),
             'routes'      => Olama_School_Helpers::translate('Routes'),
             'import'      => Olama_School_Helpers::translate('Family Locations'),
             'settings'    => Olama_School_Helpers::translate('Settings'),
@@ -75,7 +74,6 @@ class Olama_Transportation_Admin
         $companions = array();
         $years = array();
         $selected_year_id = 0;
-        $selected_bus_id = 0;
         $active_year = Olama_School_Academic::get_active_year();
         $selected_year_id = isset($_GET['academic_year_id']) ? intval($_GET['academic_year_id']) : ($active_year ? $active_year->id : 0);
         $years = Olama_School_Academic::get_years();
@@ -84,14 +82,13 @@ class Olama_Transportation_Admin
         $family_stops = array();
         $stops = array();
         $routes = array();
+        $route_trips = array();
         $registered_families = array();
         $settings = get_option('olama_transportation_settings', array());
 
         if ($active_tab === 'buses') {
             $drivers = Olama_Transportation_Bus::get_available_drivers();
             $areas = Olama_Transportation_Repository::list_items('areas', array('per_page' => 500, 'status' => 'active'));
-        } elseif ($active_tab === 'assignments') {
-            $selected_bus_id = isset($_GET['bus_id']) ? intval($_GET['bus_id']) : 0;
         }
         if (in_array($active_tab, array('overview', 'areas', 'planning', 'import'), true) && $selected_year_id) {
             $summary = Olama_Transportation_Planning::report_summary($selected_year_id);
@@ -107,6 +104,12 @@ class Olama_Transportation_Admin
         if ($active_tab === 'routes') {
             $routes = Olama_Transportation_Routes::list_routes(array('academic_year_id' => $selected_year_id));
             $stops = Olama_Transportation_Repository::list_items('stops', array('per_page' => 500, 'status' => 'active'));
+            $this->enqueue_style('olama-leaflet', 'assets/vendor/leaflet/leaflet.css');
+            wp_enqueue_script('olama-leaflet', OLAMA_TRANSPORTATION_URL . 'assets/vendor/leaflet/leaflet.js', array(), $this->asset_version(OLAMA_TRANSPORTATION_PATH . 'assets/vendor/leaflet/leaflet.js'), true);
+            $route_trips = array_merge(
+                Olama_Transportation_Shared_Trips::list_for_context($selected_year_id, 'morning'),
+                Olama_Transportation_Shared_Trips::list_for_context($selected_year_id, 'afternoon')
+            );
         }
 
         include OLAMA_TRANSPORTATION_PATH . 'admin-views/transportation.php';

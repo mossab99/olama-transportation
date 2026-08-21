@@ -306,6 +306,12 @@
             .catch(function (error) { alert(error.message); });
     });
 
+    $(document).on('change', '#route-trip-select', function () {
+        var option = $(this).find('option:selected');
+        $('#route-bus-id').val(option.data('bus-id') || '');
+        $('#route-direction').val(option.data('direction') || '');
+    });
+
     $(document).on('click', '.olama-optimize-route', function () {
         var id = $(this).data('id');
         $(this).prop('disabled', true);
@@ -313,6 +319,38 @@
             .then(function () { window.location.reload(); })
             .catch(function (error) { alert(error.message); window.location.reload(); });
     });
+
+    var routeEditorData = null, routeEditorMap = null, routeEditorLayer = null;
+    function renderRouteEditor() {
+        var route = routeEditorData || {}, stops = route.stops || [], $list = $('#olama-route-stop-list');
+        $('#olama-route-editor-title').text((route.name || 'Route') + ' · ' + (route.direction === 'morning' ? 'Arrival' : 'Departure'));
+        $('#olama-route-editor-status').text(route.needs_recalculation ? 'Trip membership or locations changed. Rebuild and review this route before publishing.' : '');
+        $('#olama-save-route-order').prop('disabled', route.status !== 'draft');
+        $('#olama-rebuild-route').prop('disabled', route.status !== 'draft');
+        $list.html(stops.length ? stops.map(function (stop, index) {
+            return '<li class="olama-route-stop" draggable="'+(route.status === 'draft' ? 'true' : 'false')+'" data-stop-id="'+Number(stop.stop_id)+'"><b>'+ (index + 1) +'</b><div><strong>'+escAdmin(stop.name || ('Stop '+stop.stop_id))+'</strong><small>'+escAdmin(stop.access_notes || (Number(stop.latitude).toFixed(5)+', '+Number(stop.longitude).toFixed(5)))+'</small></div></li>';
+        }).join('') : '<li>No valid family stops are available for this trip.</li>');
+        if (window.L) {
+            if (!routeEditorMap) routeEditorMap = L.map('olama-route-map').setView([31.9539,35.9106], 11);
+            if (!routeEditorLayer) routeEditorLayer = L.layerGroup().addTo(routeEditorMap); else routeEditorLayer.clearLayers();
+            var points = stops.map(function(s){return [Number(s.latitude),Number(s.longitude)];}).filter(function(p){return isFinite(p[0])&&isFinite(p[1]);});
+            points.forEach(function(point,index){L.marker(point).bindTooltip(String(index+1),{permanent:true,direction:'top'}).addTo(routeEditorLayer);});
+            if (points.length > 1) L.polyline(points,{color:'#2457d6',weight:4}).addTo(routeEditorLayer);
+            if (points.length) routeEditorMap.fitBounds(points,{padding:[20,20]});
+            setTimeout(function(){routeEditorMap.invalidateSize();},100);
+        }
+    }
+    function escAdmin(value){return $('<div>').text(value == null ? '' : value).html();}
+    $(document).on('click', '.olama-open-route', function () {
+        var id = $(this).data('id');
+        rest('routes/' + id).then(function(route){routeEditorData=route;var dialog=document.getElementById('olama-route-editor');if(dialog.showModal)dialog.showModal();renderRouteEditor();}).catch(function(error){alert(error.message);});
+    });
+    $(document).on('dragstart', '.olama-route-stop[draggable="true"]', function(event){event.originalEvent.dataTransfer.setData('text/plain', $(this).data('stop-id'));$(this).addClass('is-dragging');});
+    $(document).on('dragend', '.olama-route-stop', function(){$(this).removeClass('is-dragging');});
+    $(document).on('dragover', '.olama-route-stop', function(event){event.preventDefault();});
+    $(document).on('drop', '.olama-route-stop[draggable="true"]', function(event){event.preventDefault();var id=String(event.originalEvent.dataTransfer.getData('text/plain')),source=$('.olama-route-stop[data-stop-id="'+id+'"]')[0];if(source&&source!==this){var list=this.parentNode;list.insertBefore(source,this);}var ordered=$('#olama-route-stop-list .olama-route-stop').map(function(){return Number($(this).data('stop-id'));}).get();routeEditorData.stops.sort(function(a,b){return ordered.indexOf(Number(a.stop_id))-ordered.indexOf(Number(b.stop_id));});renderRouteEditor();});
+    $(document).on('click', '#olama-save-route-order', function(){if(!routeEditorData||routeEditorData.status!=='draft')return;var ids=$('#olama-route-stop-list .olama-route-stop').map(function(){return Number($(this).data('stop-id'));}).get();rest('routes/'+routeEditorData.id,{method:'PUT',body:{stop_ids:ids}}).then(function(route){routeEditorData=route;renderRouteEditor();$('#olama-route-editor-status').text('Route order saved.');}).catch(function(error){$('#olama-route-editor-status').text(error.message);});});
+    $(document).on('click', '#olama-rebuild-route', function(){if(!routeEditorData||routeEditorData.status!=='draft')return;if(!window.confirm('Rebuild stops from the current trip locations?'))return;rest('routes/'+routeEditorData.id,{method:'PUT',body:{rebuild_from_trip:true}}).then(function(route){routeEditorData=route;renderRouteEditor();$('#olama-route-editor-status').text('Stops rebuilt from the trip.');}).catch(function(error){$('#olama-route-editor-status').text(error.message);});});
 
     $(document).on('click', '.olama-publish-route', function () {
         if (!window.confirm('Publish this immutable route version?')) {
