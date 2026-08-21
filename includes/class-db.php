@@ -287,6 +287,10 @@ class Olama_Transportation_DB
             status varchar(20) NOT NULL DEFAULT 'draft',
             optimizer_provider varchar(30) DEFAULT NULL,
             optimizer_request_hash varchar(64) DEFAULT NULL,
+            route_source_hash varchar(64) DEFAULT NULL,
+            route_geometry_geojson longtext DEFAULT NULL,
+            routing_profile varchar(50) DEFAULT NULL,
+            routed_at datetime DEFAULT NULL,
             total_distance_m int(10) UNSIGNED DEFAULT NULL,
             total_duration_seconds int(10) UNSIGNED DEFAULT NULL,
             published_by bigint(20) UNSIGNED DEFAULT NULL,
@@ -296,7 +300,7 @@ class Olama_Transportation_DB
             updated_at datetime NOT NULL,
             PRIMARY KEY  (id),
             KEY shared_trip (shared_trip_id),
-            UNIQUE KEY route_version (academic_year_id, bus_id, direction, version_number),
+            UNIQUE KEY route_version_trip (shared_trip_id, version_number),
             KEY published_route (academic_year_id, bus_id, direction, status)
         ) $cc;");
 
@@ -325,6 +329,7 @@ class Olama_Transportation_DB
             request_json longtext NOT NULL,
             response_json longtext DEFAULT NULL,
             status varchar(20) NOT NULL DEFAULT 'pending',
+            duration_ms int(10) UNSIGNED DEFAULT NULL,
             error_message text DEFAULT NULL,
             requested_by bigint(20) UNSIGNED DEFAULT NULL,
             created_at datetime NOT NULL,
@@ -452,6 +457,44 @@ class Olama_Transportation_DB
         self::upgrade_areas_workspace_schema();
         self::upgrade_trip_staff_schema();
         self::ensure_legacy_assignment_links();
+        self::upgrade_route_schema();
+        self::upgrade_optimization_run_schema();
+    }
+
+    private static function upgrade_optimization_run_schema()
+    {
+        global $wpdb;
+        $table = self::table('optimization_runs');
+        $columns = $wpdb->get_col("SHOW COLUMNS FROM {$table}", 0);
+        if (!in_array('duration_ms', $columns, true)) $wpdb->query("ALTER TABLE {$table} ADD COLUMN duration_ms int(10) UNSIGNED DEFAULT NULL AFTER status");
+    }
+
+    private static function upgrade_route_schema()
+    {
+        global $wpdb;
+        $table = self::table('route_versions');
+        $columns = $wpdb->get_col("SHOW COLUMNS FROM {$table}", 0);
+        $add = array(
+            'route_source_hash' => "ADD COLUMN route_source_hash varchar(64) DEFAULT NULL AFTER optimizer_request_hash",
+            'route_geometry_geojson' => "ADD COLUMN route_geometry_geojson longtext DEFAULT NULL AFTER route_source_hash",
+            'routing_profile' => "ADD COLUMN routing_profile varchar(50) DEFAULT NULL AFTER route_geometry_geojson",
+            'routed_at' => "ADD COLUMN routed_at datetime DEFAULT NULL AFTER routing_profile",
+        );
+        foreach ($add as $column => $sql) {
+            if (!in_array($column, $columns, true)) $wpdb->query("ALTER TABLE {$table} {$sql}");
+        }
+        $indexes = $wpdb->get_col("SHOW INDEX FROM {$table}", 2);
+        if (in_array('route_version', $indexes, true)) $wpdb->query("ALTER TABLE {$table} DROP INDEX route_version");
+        if (!in_array('route_version_trip', $indexes, true)) {
+            // NULL shared_trip_id keeps legacy records addressable without rewriting ownership.
+            $trip_ids = $wpdb->get_col("SELECT DISTINCT shared_trip_id FROM {$table} WHERE shared_trip_id IS NOT NULL ORDER BY shared_trip_id");
+            foreach ($trip_ids as $trip_id) {
+                $rows = $wpdb->get_col($wpdb->prepare("SELECT id FROM {$table} WHERE shared_trip_id=%d ORDER BY version_number,id", $trip_id));
+                foreach ($rows as $number => $route_id) $wpdb->update($table, array('version_number' => $number + 1), array('id' => $route_id));
+            }
+            $wpdb->query("ALTER TABLE {$table} ADD UNIQUE KEY route_version_trip (shared_trip_id, version_number)");
+        }
+        if (!in_array('route_source_hash', $indexes, true)) $wpdb->query("ALTER TABLE {$table} ADD KEY route_source_hash (route_source_hash)");
     }
 
     private static function allow_missing_family_coordinates()

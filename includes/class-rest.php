@@ -136,6 +136,7 @@ class Olama_Transportation_REST
             array('methods' => WP_REST_Server::READABLE, 'callback' => array($this, 'get_settings'), 'permission_callback' => array($this, 'can_manage')),
             array('methods' => WP_REST_Server::EDITABLE, 'callback' => array($this, 'save_settings'), 'permission_callback' => array($this, 'can_manage')),
         ));
+        register_rest_route(self::NS, '/settings/test-ors', array('methods' => WP_REST_Server::CREATABLE, 'callback' => array($this, 'test_ors'), 'permission_callback' => array($this, 'can_manage')));
     }
 
     public function can_view()
@@ -367,6 +368,8 @@ class Olama_Transportation_REST
     {
         $settings = get_option('olama_transportation_settings', array());
         unset($settings['oracle_api_url'], $settings['oracle_api_key'], $settings['optimizer_webhook_secret']);
+        unset($settings['ors_api_key']);
+        $settings['ors_api_key_configured'] = (bool) (defined('OLAMA_TRANSPORT_ORS_API_KEY') && OLAMA_TRANSPORT_ORS_API_KEY) || !empty(get_option('olama_transportation_settings', array())['ors_api_key']);
         $settings['optimizer_webhook_secret_configured'] = !empty(get_option('olama_transportation_settings', array())['optimizer_webhook_secret']);
         $settings['core_transport_master_sync'] = function_exists('olama_core') && method_exists(olama_core(), 'transport_master')
             ? olama_core()->transport_master()->last_synced_at()
@@ -378,15 +381,20 @@ class Olama_Transportation_REST
     {
         $current = get_option('olama_transportation_settings', array());
         $input = $request->get_json_params() ?: $request->get_params();
+        $lat = $input['school_location']['latitude'] ?? ($current['school_location']['latitude'] ?? null);
+        $lng = $input['school_location']['longitude'] ?? ($current['school_location']['longitude'] ?? null);
+        if (($lat !== null && $lat !== '' && (!is_numeric($lat) || (float)$lat < -90 || (float)$lat > 90)) || ($lng !== null && $lng !== '' && (!is_numeric($lng) || (float)$lng < -180 || (float)$lng > 180))) return new WP_Error('invalid_school_location', __('Academy coordinates must be valid latitude/longitude values.', 'olama-transportation'), array('status'=>400));
         $settings = array(
-            'optimizer_provider' => in_array(($input['optimizer_provider'] ?? 'manual'), array('manual', 'google', 'webhook'), true) ? $input['optimizer_provider'] : 'manual',
+            'optimizer_provider' => in_array(($input['optimizer_provider'] ?? 'manual'), array('manual', 'ors', 'google', 'webhook'), true) ? $input['optimizer_provider'] : 'manual',
+            'ors_profile' => in_array(($input['ors_profile'] ?? ($current['ors_profile'] ?? 'driving-car')), array('driving-car','driving-hgv','cycling-regular','foot-walking'), true) ? $input['ors_profile'] : 'driving-car',
+            'ors_service_duration_seconds' => max(0, absint($input['ors_service_duration_seconds'] ?? ($current['ors_service_duration_seconds'] ?? 60))),
             'google_project_id' => sanitize_text_field($input['google_project_id'] ?? ($current['google_project_id'] ?? '')),
             'optimizer_webhook_url' => esc_url_raw($input['optimizer_webhook_url'] ?? ($current['optimizer_webhook_url'] ?? '')),
             'traccar_enabled' => !empty($input['traccar_enabled']) ? 1 : 0,
             'traccar_url' => esc_url_raw($input['traccar_url'] ?? ($current['traccar_url'] ?? '')),
             'school_location' => array(
-                'latitude' => (float) ($input['school_location']['latitude'] ?? ($current['school_location']['latitude'] ?? 31.9539)),
-                'longitude' => (float) ($input['school_location']['longitude'] ?? ($current['school_location']['longitude'] ?? 35.9106)),
+                'latitude' => ($input['school_location']['latitude'] ?? ($current['school_location']['latitude'] ?? null)) === '' ? null : (float) ($input['school_location']['latitude'] ?? ($current['school_location']['latitude'] ?? null)),
+                'longitude' => ($input['school_location']['longitude'] ?? ($current['school_location']['longitude'] ?? null)) === '' ? null : (float) ($input['school_location']['longitude'] ?? ($current['school_location']['longitude'] ?? null)),
             ),
             'service_bounds' => array(
                 'south' => (float) ($input['service_bounds']['south'] ?? 29),
@@ -398,9 +406,18 @@ class Olama_Transportation_REST
         foreach (array('optimizer_webhook_secret') as $secret) {
             $settings[$secret] = !empty($input[$secret]) ? sanitize_text_field($input[$secret]) : ($current[$secret] ?? '');
         }
+        if (!defined('OLAMA_TRANSPORT_ORS_API_KEY') && !empty($input['ors_api_key'])) $settings['ors_api_key'] = sanitize_text_field($input['ors_api_key']);
+        elseif (!defined('OLAMA_TRANSPORT_ORS_API_KEY')) $settings['ors_api_key'] = (string) ($current['ors_api_key'] ?? '');
         update_option('olama_transportation_settings', $settings, false);
         Olama_Transportation_Audit::record('update', 'settings', null, null, array('changed' => array_keys($settings)));
         return $this->get_settings();
+    }
+
+    public function test_ors()
+    {
+        $client = new Olama_Transportation_ORS_Client();
+        $result = $client->test_connection();
+        return is_wp_error($result) ? $result : rest_ensure_response(array('success'=>true,'message'=>__('OpenRouteService configuration is working.', 'olama-transportation')));
     }
 
     private function respond($result)

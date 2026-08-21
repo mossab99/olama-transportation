@@ -32,10 +32,10 @@ class Olama_Transportation_Routes
             return new WP_Error('invalid_direction', __('Direction must be morning or afternoon.', 'olama-transportation'));
         }
         $table = Olama_Transportation_DB::table('route_versions');
-        $version = 1 + intval($wpdb->get_var($wpdb->prepare(
-            "SELECT MAX(version_number) FROM {$table} WHERE academic_year_id = %d AND bus_id = %d AND direction = %s",
-            intval($data['academic_year_id']), intval($data['bus_id']), $direction
-        )));
+        $version_sql = $shared_trip_id
+            ? $wpdb->prepare("SELECT MAX(version_number) FROM {$table} WHERE shared_trip_id = %d", $shared_trip_id)
+            : $wpdb->prepare("SELECT MAX(version_number) FROM {$table} WHERE shared_trip_id IS NULL AND academic_year_id = %d AND bus_id = %d AND direction = %s", intval($data['academic_year_id']), intval($data['bus_id']), $direction);
+        $version = 1 + intval($wpdb->get_var($version_sql));
         $now = current_time('mysql', true);
         $inserted = $wpdb->insert($table, array(
             'shared_trip_id' => $shared_trip_id ?: null,
@@ -48,6 +48,7 @@ class Olama_Transportation_Routes
             'created_by' => get_current_user_id() ?: null,
             'created_at' => $now,
             'updated_at' => $now,
+            'route_source_hash' => $shared_trip_id ? self::source_hash($shared_trip_id) : null,
         ));
         if (!$inserted) {
             return new WP_Error('db_error', $wpdb->last_error ?: __('Unable to create route version.', 'olama-transportation'));
@@ -111,7 +112,10 @@ class Olama_Transportation_Routes
                  WHERE m.trip_id=%d", absint($route['shared_trip_id'])), ARRAY_A);
             $family_count = (int) ($counts['total_families'] ?? 0);
             $located_count = (int) ($counts['located_families'] ?? 0);
-            $route['needs_recalculation'] = $located_count !== count($route['stops']);
+            $current_hash = self::source_hash($route['shared_trip_id']);
+            $route['current_route_source_hash'] = $current_hash;
+            $route['needs_recalculation'] = !$route['route_source_hash'] || ($current_hash !== $route['route_source_hash']) || $located_count !== count($route['stops']);
+            $route['stale_reason'] = ($route['route_source_hash'] && $current_hash !== $route['route_source_hash']) ? __('Trip membership or family locations changed. Rebuild the route before optimization/publishing.', 'olama-transportation') : '';
             $route['trip_family_count'] = $family_count;
             $route['located_family_count'] = $located_count;
             $route['missing_location_count'] = max(0, $family_count - $located_count);
@@ -126,6 +130,8 @@ class Olama_Transportation_Routes
         } else {
             $route['needs_recalculation'] = false;
         }
+        $settings = get_option('olama_transportation_settings', array());
+        $route['depot'] = $settings['school_location'] ?? array();
         return $route;
     }
 
@@ -167,7 +173,19 @@ class Olama_Transportation_Routes
         $wpdb->update(Olama_Transportation_DB::table('route_versions'), $updates, array('id' => intval($id)));
         if (!empty($data['rebuild_from_trip']) && !empty($before['shared_trip_id'])) {
             $data['stop_ids'] = self::trip_stop_ids($before['shared_trip_id']);
+            $updates['route_source_hash'] = self::source_hash($before['shared_trip_id']);
+            $updates['route_geometry_geojson'] = null;
+            $updates['total_distance_m'] = null;
+            $updates['total_duration_seconds'] = null;
+            $updates['routed_at'] = null;
         }
+        if (isset($data['stop_ids']) && empty($data['rebuild_from_trip'])) {
+            $updates['route_geometry_geojson'] = null;
+            $updates['total_distance_m'] = null;
+            $updates['total_duration_seconds'] = null;
+            $updates['routed_at'] = null;
+        }
+        if (count($updates) > 1) $wpdb->update(Olama_Transportation_DB::table('route_versions'), $updates, array('id' => intval($id)));
         if (isset($data['stop_ids'])) {
             $result = self::replace_stops($id, $data['stop_ids']);
             if (is_wp_error($result)) {
@@ -205,12 +223,10 @@ class Olama_Transportation_Routes
         $table = Olama_Transportation_DB::table('route_versions');
         $wpdb->query('START TRANSACTION');
         try {
-            $wpdb->update($table, array('status' => 'archived', 'updated_at' => current_time('mysql', true)), array(
-                'academic_year_id' => $route['academic_year_id'],
-                'bus_id' => $route['bus_id'],
-                'direction' => $route['direction'],
-                'status' => 'published',
-            ));
+            $where = array('status' => 'published');
+            if (!empty($route['shared_trip_id'])) $where['shared_trip_id'] = absint($route['shared_trip_id']);
+            else { $where['academic_year_id'] = $route['academic_year_id']; $where['bus_id'] = $route['bus_id']; $where['direction'] = $route['direction']; }
+            $wpdb->update($table, array('status' => 'archived', 'updated_at' => current_time('mysql', true)), $where);
             $result = $wpdb->update($table, array(
                 'status' => 'published',
                 'published_by' => get_current_user_id() ?: null,
@@ -245,8 +261,17 @@ class Olama_Transportation_Routes
             'optimizer_request_hash' => sanitize_text_field($metrics['request_hash'] ?? ''),
             'total_distance_m' => isset($metrics['distance_m']) ? intval($metrics['distance_m']) : null,
             'total_duration_seconds' => isset($metrics['duration_seconds']) ? intval($metrics['duration_seconds']) : null,
+            'route_source_hash' => $metrics['source_hash'] ?? ($route['route_source_hash'] ?? null),
+            'route_geometry_geojson' => $metrics['geometry_geojson'] ?? null,
+            'routing_profile' => sanitize_text_field($metrics['routing_profile'] ?? ''),
+            'routed_at' => !empty($metrics['geometry_geojson']) ? current_time('mysql', true) : null,
             'updated_at' => current_time('mysql', true),
         ), array('id' => intval($id)));
+        if (!empty($metrics['leg_metrics'])) {
+            foreach (array_values($metrics['leg_metrics']) as $index => $leg) {
+                $wpdb->update(Olama_Transportation_DB::table('route_stops'), array('distance_from_previous_m'=>absint($leg['distance_m'] ?? 0),'duration_from_previous_seconds'=>absint($leg['duration_seconds'] ?? 0),'updated_at'=>current_time('mysql', true)), array('route_version_id'=>intval($id),'sequence_number'=>$index + 1));
+            }
+        }
         return self::get($id);
     }
 
@@ -254,27 +279,26 @@ class Olama_Transportation_Routes
     {
         global $wpdb;
         $stop_ids = array_values(array_unique(array_filter(array_map('intval', (array) $stop_ids))));
-        if (!$stop_ids) {
-            return true;
-        }
-        $existing_count = intval($wpdb->get_var(
+        $existing_count = $stop_ids ? intval($wpdb->get_var(
             "SELECT COUNT(*) FROM " . Olama_Transportation_DB::table('stops') .
             ' WHERE id IN (' . implode(',', $stop_ids) . ") AND status = 'active'"
-        ));
+        )) : 0;
         if ($existing_count !== count($stop_ids)) {
             return new WP_Error('invalid_stops', __('One or more route stops are invalid.', 'olama-transportation'));
         }
         $table = Olama_Transportation_DB::table('route_stops');
-        $wpdb->delete($table, array('route_version_id' => intval($route_id)));
         $now = current_time('mysql', true);
+        $wpdb->query($wpdb->prepare("UPDATE {$table} SET sequence_number = sequence_number + 1000000 WHERE route_version_id = %d", intval($route_id)));
+        if ($stop_ids) {
+            $placeholders = implode(',', array_fill(0, count($stop_ids), '%d'));
+            $wpdb->query($wpdb->prepare("DELETE FROM {$table} WHERE route_version_id = %d AND stop_id NOT IN ({$placeholders})", array_merge(array(intval($route_id)), $stop_ids)));
+        } else {
+            $wpdb->delete($table, array('route_version_id' => intval($route_id)));
+        }
         foreach ($stop_ids as $index => $stop_id) {
-            $wpdb->insert($table, array(
-                'route_version_id' => intval($route_id),
-                'stop_id' => $stop_id,
-                'sequence_number' => $index + 1,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ));
+            $existing = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$table} WHERE route_version_id=%d AND stop_id=%d", intval($route_id), $stop_id));
+            if ($existing) $wpdb->update($table, array('sequence_number' => $index + 1, 'updated_at' => $now), array('id' => $existing));
+            else $wpdb->insert($table, array('route_version_id' => intval($route_id), 'stop_id' => $stop_id, 'sequence_number' => $index + 1, 'created_at' => $now, 'updated_at' => $now));
         }
         return true;
     }
@@ -298,7 +322,10 @@ class Olama_Transportation_Routes
             if ($family_uid === '') continue;
             $code = 'family-' . substr(hash('sha256', $family_uid), 0, 40);
             $existing = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$stops} WHERE code=%s LIMIT 1", $code));
-            if ($existing) { $ids[] = (int) $existing; continue; }
+            if ($existing) {
+                $wpdb->update($stops, array('latitude' => (float) $row['latitude'], 'longitude' => (float) $row['longitude'], 'access_notes' => (string) ($row['address_text'] ?? ''), 'updated_at' => $now), array('id' => (int) $existing));
+                $ids[] = (int) $existing; continue;
+            }
             $name = 'Family #' . (string) ($row['oracle_family_id'] ?: $family_uid);
             $inserted = $wpdb->insert($stops, array(
                 'name' => $name, 'code' => $code, 'latitude' => (float) $row['latitude'], 'longitude' => (float) $row['longitude'],
@@ -308,5 +335,21 @@ class Olama_Transportation_Routes
             if ($inserted) $ids[] = (int) $wpdb->insert_id;
         }
         return array_values(array_unique(array_map('intval', $ids)));
+    }
+
+    public static function source_hash($trip_id)
+    {
+        global $wpdb;
+        $members = self::source_rows($trip_id);
+        $values = array();
+        foreach ($members as $row) $values[] = (string) $row['family_uid'] . ':' . (string) ($row['latitude'] ?? '') . ':' . (string) ($row['longitude'] ?? '');
+        sort($values, SORT_STRING);
+        return hash('sha256', absint($trip_id) . '|' . implode('|', $values));
+    }
+
+    private static function source_rows($trip_id)
+    {
+        global $wpdb;
+        return $wpdb->get_results($wpdb->prepare("SELECT DISTINCT m.family_uid,fs.latitude,fs.longitude FROM " . Olama_Transportation_DB::table('shared_trip_students') . " m LEFT JOIN " . Olama_Transportation_DB::table('family_stops') . " fs ON fs.family_uid=m.family_uid WHERE m.trip_id=%d", absint($trip_id)), ARRAY_A);
     }
 }

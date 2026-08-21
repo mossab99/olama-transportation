@@ -10,8 +10,8 @@ class Olama_Transportation_Optimizer
     {
         global $wpdb;
         $route = Olama_Transportation_Routes::get($route_id);
-        if (!$route || $route['status'] !== 'draft' || count($route['stops']) < 2) {
-            return new WP_Error('invalid_route', __('A draft route with at least two stops is required.', 'olama-transportation'));
+        if (!$route || $route['status'] !== 'draft' || count($route['stops']) < 1) {
+            return new WP_Error('invalid_route', __('A draft route with at least one stop is required.', 'olama-transportation'));
         }
         if (!empty($route['needs_recalculation'])) {
             return new WP_Error('route_needs_recalculation', __('Trip membership or family locations changed. Rebuild the route before optimizing.', 'olama-transportation'));
@@ -22,6 +22,7 @@ class Olama_Transportation_Optimizer
             return new WP_Error('manual_provider', __('Select and configure an external optimizer first.', 'olama-transportation'));
         }
 
+        if ($provider === 'ors') return $this->optimize_ors($route, $settings);
         $request = $this->build_request($route, $settings);
         $hash = hash('sha256', wp_json_encode($request));
         $runs = Olama_Transportation_DB::table('optimization_runs');
@@ -65,6 +66,78 @@ class Olama_Transportation_Optimizer
             'distance_m' => $normalized['distance_m'],
             'duration_seconds' => $normalized['duration_seconds'],
         ));
+    }
+
+    private function optimize_ors($route, $settings)
+    {
+        global $wpdb;
+        $problem = $this->build_problem($route, $settings);
+        if (is_wp_error($problem)) return $problem;
+        $request = self::build_ors_payload($route, $problem);
+        $hash = hash('sha256', wp_json_encode($request));
+        $runs = Olama_Transportation_DB::table('optimization_runs');
+        $wpdb->insert($runs, array('route_version_id'=>absint($route['id']),'provider'=>'ors','request_hash'=>$hash,'request_json'=>wp_json_encode($request),'status'=>'pending','requested_by'=>get_current_user_id() ?: null,'created_at'=>current_time('mysql', true)));
+        $run_id = $wpdb->insert_id;
+        $client = new Olama_Transportation_ORS_Client();
+        $started = microtime(true);
+        $response = $client->optimize($request);
+        if (is_wp_error($response)) return $this->fail_run($run_id, $response, $started);
+        $ordered = self::parse_ors_order($response, wp_list_pluck($problem['stops'], 'stop_id'));
+        if (is_wp_error($ordered)) return $this->fail_run($run_id, $ordered, $started);
+        $coordinates = array(array((float) $problem['depot'][0], (float) $problem['depot'][1]));
+        foreach ($ordered as $stop_id) foreach ($problem['stops'] as $stop) if ((int)$stop['stop_id'] === (int)$stop_id) $coordinates[] = array((float)$stop['longitude'], (float)$stop['latitude']);
+        $coordinates[] = $coordinates[0];
+        $directions = $client->directions($coordinates, array('profile' => $problem['profile']));
+        if (is_wp_error($directions)) return $this->fail_run($run_id, $directions, $started);
+        $metrics = self::parse_directions($directions);
+        if (is_wp_error($metrics)) return $this->fail_run($run_id, $metrics, $started);
+        $wpdb->query('START TRANSACTION');
+        $result = Olama_Transportation_Routes::apply_optimization($route['id'], $ordered, array('provider'=>'ors','request_hash'=>$hash,'source_hash'=>$route['current_route_source_hash'] ?? $route['route_source_hash'],'distance_m'=>$metrics['distance_m'],'duration_seconds'=>$metrics['duration_seconds'],'geometry_geojson'=>wp_json_encode($directions),'routing_profile'=>$problem['profile'],'leg_metrics'=>$metrics['legs']));
+        if (is_wp_error($result)) { $wpdb->query('ROLLBACK'); return $this->fail_run($run_id, $result, $started); }
+        $wpdb->query('COMMIT');
+        $wpdb->update($runs, array('status'=>'completed','response_json'=>wp_json_encode($directions),'duration_ms'=>max(0,(int)round((microtime(true)-$started)*1000)),'completed_at'=>current_time('mysql', true)), array('id'=>$run_id));
+        return $result;
+    }
+
+    public static function build_ors_payload($route, $problem)
+    {
+        return array(
+            'vehicles' => array(array('id' => absint($route['bus_id']), 'profile' => $problem['profile'], 'start' => $problem['depot'], 'end' => $problem['depot'])),
+            'jobs' => array_map(function ($stop) { return array('id' => absint($stop['stop_id']), 'location' => array((float) $stop['longitude'], (float) $stop['latitude']), 'service' => absint($stop['service'])); }, $problem['stops']),
+        );
+    }
+
+    private function build_problem($route, $settings)
+    {
+        $location = $settings['school_location'] ?? array();
+        if (!isset($location['latitude'],$location['longitude']) || !is_numeric($location['latitude']) || !is_numeric($location['longitude']) || $location['latitude'] < -90 || $location['latitude'] > 90 || $location['longitude'] < -180 || $location['longitude'] > 180) return new WP_Error('ors_missing_depot', __('Configure valid academy/depot coordinates before optimizing.', 'olama-transportation'));
+        if (empty($route['stops'])) return new WP_Error('no_valid_stops', __('No valid GPS stops are available for this route.', 'olama-transportation'));
+        $profile = sanitize_key($settings['ors_profile'] ?? 'driving-car');
+        if (!in_array($profile, array('driving-car','driving-hgv','cycling-regular','foot-walking'), true)) return new WP_Error('ors_invalid_profile', __('The configured OpenRouteService profile is invalid.', 'olama-transportation'));
+        return array('profile'=>$profile,'depot'=>array((float)$location['longitude'],(float)$location['latitude']),'stops'=>array_map(function($stop) use ($settings){return array('stop_id'=>(int)$stop['stop_id'],'latitude'=>(float)$stop['latitude'],'longitude'=>(float)$stop['longitude'],'service'=>absint($settings['ors_service_duration_seconds'] ?? 60));},$route['stops']));
+    }
+
+    public static function parse_ors_order($response, $requested_ids)
+    {
+        if (!empty($response['unassigned'])) return new WP_Error('invalid_ors_response', __('OpenRouteService returned unassigned route stops.', 'olama-transportation'));
+        $returned = array();
+        foreach (($response['routes'][0]['steps'] ?? array()) as $step) if (($step['type'] ?? '') === 'job' && isset($step['id'])) $returned[] = (int)$step['id'];
+        $requested = array_values(array_map('intval', $requested_ids)); sort($requested); $check = $returned; sort($check);
+        if (!$returned || $requested !== $check || count($returned) !== count(array_unique($returned))) return new WP_Error('invalid_ors_response', __('OpenRouteService did not return every route stop exactly once.', 'olama-transportation'));
+        return array_values(array_map('intval', $returned));
+    }
+
+    public static function parse_directions($response)
+    {
+        $feature = $response['features'][0] ?? null; $summary = $feature['properties']['summary'] ?? null;
+        if (!$feature || empty($feature['geometry']) || !is_array($summary)) return new WP_Error('invalid_directions_response', __('OpenRouteService directions returned no usable route.', 'olama-transportation'));
+        $legs = array(); foreach (($feature['properties']['segments'] ?? array()) as $segment) $legs[] = array('distance_m'=>(int)round((float)($segment['distance'] ?? 0)),'duration_seconds'=>(int)round((float)($segment['duration'] ?? 0)));
+        return array('geometry'=>$feature['geometry'],'distance_m'=>(int)round((float)($summary['distance'] ?? 0)),'duration_seconds'=>(int)round((float)($summary['duration'] ?? 0)),'legs'=>$legs);
+    }
+
+    private function fail_run($run_id, $error, $started = 0)
+    {
+        global $wpdb; if ($run_id) $wpdb->update(Olama_Transportation_DB::table('optimization_runs'), array('status'=>'failed','duration_ms'=>$started ? max(0,(int)round((microtime(true)-$started)*1000)) : null,'error_message'=>sanitize_text_field($error->get_error_message()),'completed_at'=>current_time('mysql', true)), array('id'=>$run_id)); return $error;
     }
 
     private function build_request($route, $settings)

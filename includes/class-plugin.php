@@ -66,6 +66,7 @@ final class Olama_Transportation_Plugin
         require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-areas-workspace.php';
         require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-shared-trips.php';
         require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-routes.php';
+        require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-ors-client.php';
         require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-optimizer.php';
         require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-rest.php';
         require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-ajax.php';
@@ -207,7 +208,9 @@ final class Olama_Transportation_Plugin
         add_option('olama_transportation_settings', array(
             'optimizer_provider' => 'manual',
             'traccar_enabled' => 0,
-            'school_location' => array('latitude' => 31.9539, 'longitude' => 35.9106),
+            'school_location' => array('latitude' => null, 'longitude' => null),
+            'ors_profile' => 'driving-car',
+            'ors_service_duration_seconds' => 60,
             'service_bounds' => array('south' => 29, 'north' => 34, 'west' => 34, 'east' => 40),
         ), '', false);
     }

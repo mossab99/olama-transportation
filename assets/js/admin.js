@@ -314,17 +314,21 @@
 
     $(document).on('click', '.olama-optimize-route', function () {
         var id = $(this).data('id');
-        $(this).prop('disabled', true);
+        var button = this, editor = document.getElementById('olama-route-editor');
+        $(button).prop('disabled', true).text('Optimizing...');
         rest('routes/' + id + '/optimize', {method: 'POST'})
-            .then(function () { window.location.reload(); })
-            .catch(function (error) { alert(error.message); window.location.reload(); });
+            .then(function (route) { routeEditorData=route; if (editor) { editor.hidden=false; renderRouteEditor(); editor.scrollIntoView({behavior:'smooth',block:'start'}); } })
+            .catch(function (error) { if (editor) $('#olama-route-editor-status').text('Route optimization failed. The existing route has not been changed. '+error.message); else alert(error.message); })
+            .finally(function () { $(button).prop('disabled', false).text('Optimize'); });
     });
 
     var routeEditorData = null, routeEditorMap = null, routeEditorLayer = null;
     function renderRouteEditor() {
         var route = routeEditorData || {}, stops = route.stops || [], $list = $('#olama-route-stop-list');
+        if (!$('#olama-route-summary').length) $('#olama-route-editor-status').before('<div id="olama-route-summary" class="olama-route-summary"></div>');
+        $('#olama-route-summary').text('Stops: '+stops.length+' · Distance: '+(route.total_distance_m ? (Number(route.total_distance_m)/1000).toFixed(1)+' km' : '—')+' · Driving time: '+(route.total_duration_seconds ? Math.round(Number(route.total_duration_seconds)/60)+' min' : '—')+' · Optimizer: '+(route.optimizer_provider || 'Manual')+' · Profile: '+(route.routing_profile || '—')+' · Status: '+(route.status || 'draft'));
         $('#olama-route-editor-title').text((route.name || 'Route') + ' · ' + (route.direction === 'morning' ? 'Arrival' : 'Departure'));
-        $('#olama-route-editor-status').text(route.needs_recalculation ? ('Trip has '+Number(route.located_family_count||0)+' located families but this route has '+Number((route.stops||[]).length)+' mapped stops. Rebuild the route; review the missing locations.') : (route.partial_route ? ('Optimization will continue with '+Number(route.located_family_count||0)+' located families. '+Number(route.missing_location_count||0)+' family location(s) are skipped.') : ''));
+        $('#olama-route-editor-status').text(route.needs_recalculation ? (route.stale_reason || 'Trip membership or family locations changed. Rebuild the route before optimization/publishing.') : (route.partial_route ? ('Optimization will continue with '+Number(route.located_family_count||0)+' located families. '+Number(route.missing_location_count||0)+' family location(s) are skipped.') : ''));
         var skipped = route.skipped_families || [];
         $('#olama-route-skipped-list').html(skipped.length ? '<strong>Skipped from optimization ('+skipped.length+')</strong><ul>'+skipped.map(function(f){return '<li>Family #'+escAdmin(f.family_number||'—')+(f.student_names?' · '+escAdmin(f.student_names):'')+'</li>';}).join('')+'</ul>' : '');
         $('#olama-save-route-order').prop('disabled', route.status !== 'draft');
@@ -341,8 +345,10 @@
             }
             if (!routeEditorLayer) routeEditorLayer = L.layerGroup().addTo(routeEditorMap); else routeEditorLayer.clearLayers();
             var points = stops.map(function(s){return [Number(s.latitude),Number(s.longitude)];}).filter(function(p){return isFinite(p[0])&&isFinite(p[1]);});
+            if (route.depot && isFinite(Number(route.depot.latitude)) && isFinite(Number(route.depot.longitude))) L.marker([Number(route.depot.latitude),Number(route.depot.longitude)]).bindPopup('Academy / depot').addTo(routeEditorLayer);
             points.forEach(function(point,index){L.marker(point).bindTooltip(String(index+1),{permanent:true,direction:'top'}).addTo(routeEditorLayer);});
-            if (points.length > 1) L.polyline(points,{color:'#2457d6',weight:4}).addTo(routeEditorLayer);
+            if (route.route_geometry_geojson) { try { L.geoJSON(typeof route.route_geometry_geojson === 'string' ? JSON.parse(route.route_geometry_geojson) : route.route_geometry_geojson,{style:{color:'#2457d6',weight:5}}).addTo(routeEditorLayer); } catch(e) {} }
+            else if (points.length > 1) L.polyline(points,{color:'#8291b5',weight:4,dashArray:'6 6'}).bindTooltip('Preview').addTo(routeEditorLayer);
             if (points.length) routeEditorMap.fitBounds(points,{padding:[20,20]});
             setTimeout(function(){routeEditorMap.invalidateSize();},100);
         }
@@ -558,10 +564,15 @@
         event.preventDefault();
         var values = objectFromForm(this);
         values.traccar_enabled = values.traccar_enabled ? 1 : 0;
+        values.school_location = {latitude: values['school_location[latitude]'] || '', longitude: values['school_location[longitude]'] || ''};
+        delete values['school_location[latitude]']; delete values['school_location[longitude]'];
         rest('settings', {method: 'PUT', body: values})
             .then(function () { $('#settings-result').text(t('saved')); })
             .catch(function (error) { $('#settings-result').text(error.message); });
     });
+    function toggleOptimizerPanels() { var provider=$('#optimizer-provider').val(); $('[data-optimizer-panel]').each(function(){ $(this).toggle($(this).data('optimizer-panel') === provider); }); }
+    $(document).on('change', '#optimizer-provider', toggleOptimizerPanels); toggleOptimizerPanels();
+    $(document).on('click', '#test-ors-configuration', function(){ var button=this; $(button).prop('disabled',true).text('Testing...'); rest('settings/test-ors',{method:'POST'}).then(function(r){$('#settings-result').text(r.message||'OpenRouteService configuration is working.');}).catch(function(e){$('#settings-result').text(e.message);}).finally(function(){$(button).prop('disabled',false).text('Test ORS Configuration');}); });
 
     $('#refresh-core-buses').on('click', function () {
         var $button = $(this).prop('disabled', true);
