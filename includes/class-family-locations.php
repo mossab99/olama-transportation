@@ -28,6 +28,7 @@ class Olama_Transportation_Family_Locations
         $rows = $wpdb->get_results($wpdb->prepare(
             "SELECT f.family_uid, f.oracle_family_id,
                     COALESCE(NULLIF(f.sponsor_full_name, ''), NULLIF(f.father_name, ''), f.oracle_family_id) AS family_name,
+                    f.father_name,
                     COALESCE(NULLIF(f.primary_mobile, ''), NULLIF(f.father_mobile, ''), f.mother_mobile) AS mobile,
                     f.father_mobile, f.mother_mobile,
                     COALESCE(NULLIF(f.family_address, ''), f.address) AS oracle_address,
@@ -133,7 +134,9 @@ class Olama_Transportation_Family_Locations
             if ($afternoon !== 'all' && sanitize_key($row['effective_afternoon']['assignment_status'] ?? 'missing_area') !== $afternoon) return false;
             return true;
         }));
-        $per_page = min(100, max(20, absint($args['per_page'] ?? 20)));
+        $per_page = !empty($args['export_all'])
+            ? max(1, count($filtered))
+            : min(100, max(20, absint($args['per_page'] ?? 20)));
         $page = max(1, absint($args['page'] ?? 1));
         $total = count($filtered);
         $student_total = array_sum(array_map(static function ($row) {

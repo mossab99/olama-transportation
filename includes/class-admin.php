@@ -11,6 +11,7 @@ class Olama_Transportation_Admin
         add_action('admin_menu', array($this, 'register_menus'), 30);
         add_action('admin_enqueue_scripts', array($this, 'enqueue_assets'));
         add_action('admin_init', array($this, 'redirect_legacy_page'), 1);
+        add_action('admin_post_olama_transport_export_family_locations', array($this, 'export_family_locations_csv'));
     }
 
     public function register_menus()
@@ -45,6 +46,72 @@ class Olama_Transportation_Admin
         $args['page'] = 'olama-transportation';
         unset($args['_wpnonce']);
         wp_safe_redirect(add_query_arg($args, admin_url('admin.php')));
+        exit;
+    }
+
+    public function export_family_locations_csv()
+    {
+        $can_manage = class_exists('Olama_School_Permissions')
+            ? Olama_School_Permissions::can('olama_manage_transport_buses')
+            : current_user_can('manage_options');
+        if (!$can_manage) {
+            wp_die(esc_html__('Unauthorized access', 'olama-transportation'), 403);
+        }
+        check_admin_referer('olama_transport_export_family_locations');
+
+        $year = absint($_GET['academic_year_id'] ?? 0);
+        if (!$year) {
+            wp_die(esc_html__('Academic year is required.', 'olama-transportation'), 400);
+        }
+        $input = wp_unslash($_GET);
+        $args = array(
+            'export_all' => true,
+            'search' => sanitize_text_field($input['search'] ?? ''),
+            'major_area_id' => sanitize_text_field($input['major_area_id'] ?? 'all'),
+            'oracle_area' => sanitize_text_field($input['oracle_area'] ?? 'all'),
+            'transportation_status' => sanitize_key($input['transportation_status'] ?? 'all'),
+            'location_status' => sanitize_key($input['location_status'] ?? 'all'),
+            'morning_status' => sanitize_key($input['morning_status'] ?? 'all'),
+            'afternoon_status' => sanitize_key($input['afternoon_status'] ?? 'all'),
+            'missing_locations' => sanitize_key($input['missing_locations'] ?? 'all'),
+        );
+        $data = Olama_Transportation_Family_Locations::admin_list($year, $args);
+        $now = current_time('mysql');
+        $user = wp_get_current_user();
+        $exported_by = $user ? $user->display_name : '';
+        $study_year = Olama_Transportation_Bus::study_year($year);
+        $filename = sprintf('family-locations-%s-%s.csv', sanitize_file_name($study_year), wp_date('Y-m-d-His'));
+
+        Olama_Transportation_Audit::record('family_locations_exported', 'family_locations', $year, null, array(
+            'academic_year_id' => $year,
+            'study_year' => $study_year,
+            'family_count' => (int) ($data['pagination']['total'] ?? 0),
+            'student_count' => (int) ($data['pagination']['student_total'] ?? 0),
+            'filters' => $args,
+            'exported_at' => $now,
+        ));
+
+        nocache_headers();
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        $output = fopen('php://output', 'w');
+        echo "\xEF\xBB\xBF"; // UTF-8 BOM for Arabic text in Excel.
+        fputcsv($output, array('Family #', 'Father name', 'Father mobile', 'Kids (first name - grade - section)', 'GPS coordinates', 'Oracle area', 'Oracle address', 'Planning area', 'Location status', 'Exported at', 'Exported by'));
+        foreach ($data['items'] as $family) {
+            $kids = array();
+            foreach (($family['students'] ?? array()) as $student) {
+                $kids[] = trim(implode(' - ', array_filter(array($student['first_name'] ?? '', $student['class_name'] ?? '', $student['section_name'] ?? ''), 'strlen')));
+            }
+            $coordinates = $family['latitude'] !== null && $family['longitude'] !== null
+                ? $family['latitude'] . ', ' . $family['longitude']
+                : '';
+            fputcsv($output, array(
+                $family['oracle_family_id'] ?? '', $family['father_name'] ?: ($family['family_name'] ?? ''), $family['father_mobile'] ?? '', implode(' | ', $kids),
+                $coordinates, $family['trans_region_name'] ?? '', $family['oracle_address'] ?? '', $family['major_area_name'] ?? '',
+                $family['verification_status'] ?? '', $now, $exported_by,
+            ));
+        }
+        fclose($output);
         exit;
     }
 
@@ -268,6 +335,7 @@ class Olama_Transportation_Admin
             wp_enqueue_script('olama-family-locations', OLAMA_TRANSPORTATION_URL . 'assets/js/family-locations.js', array(), $this->asset_version($path), true);
             wp_localize_script('olama-family-locations', 'olamaFamilyLocations', array(
                 'restUrl' => esc_url_raw(rest_url('olama-transportation/v1/')), 'restNonce' => wp_create_nonce('wp_rest'),
+                'exportUrl' => admin_url('admin-post.php'), 'exportNonce' => wp_create_nonce('olama_transport_export_family_locations'),
                 'canManage' => Olama_School_Permissions::can('olama_manage_transport_buses'),
                 'areas' => array_values(array_map(function ($area) { return array('id'=>(int)$area['id'],'name'=>$area['name']); }, Olama_Transportation_Area_Sync::selectable_areas())),
                 'i18n' => array(
@@ -291,6 +359,7 @@ class Olama_Transportation_Admin
                     'address'=>Olama_School_Helpers::translate('Address'),'noAddress'=>Olama_School_Helpers::translate('No address available'),
                     'manualOverride'=>Olama_School_Helpers::translate('Planning Area differs from Oracle Area'),
                     'networkError'=>Olama_School_Helpers::translate('The request failed. Check the connection and try again.'),
+                    'exportCsv'=>Olama_School_Helpers::translate('Export CSV'),
                 ),
             ));
         } elseif ($tab === 'dual') {

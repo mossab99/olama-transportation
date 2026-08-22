@@ -220,6 +220,7 @@ $translate = array('Olama_School_Helpers', 'translate');
                 </div>
                 <div class="olama-bulk-area-bar">
                     <strong id="family-filter-totals" class="olama-filter-totals" aria-live="polite">0 <?php echo esc_html($translate('families')); ?> · 0 <?php echo esc_html($translate('students')); ?></strong>
+                    <button type="button" id="family-location-export" class="button"><?php echo esc_html($translate('Export CSV')); ?></button>
                     <strong id="family-selected-count">0 <?php echo esc_html($translate('selected')); ?></strong>
                     <label for="family-location-bulk-area"><?php echo esc_html($translate('Bulk Planning Area')); ?><select id="family-location-bulk-area"><option value=""><?php echo esc_html($translate('Clear area assignment')); ?></option><?php foreach ($areas as $area): if (($area['status'] ?? '') !== 'active') continue; ?><option value="<?php echo intval($area['id']); ?>"><?php echo esc_html($area['name']); ?></option><?php endforeach; ?></select></label>
                     <button type="button" id="family-location-bulk-save" class="button button-primary"><?php echo esc_html($translate('Apply to selected')); ?></button>
