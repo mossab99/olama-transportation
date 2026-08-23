@@ -131,6 +131,7 @@ class Olama_Transportation_Admin
             'import'      => Olama_School_Helpers::translate('Family Locations'),
             'dual'        => Olama_School_Helpers::translate('Dual Locations'),
             'companions'  => Olama_School_Helpers::translate('Companion Locations'),
+            'reports'     => Olama_School_Helpers::translate('Reports'),
             'settings'    => Olama_School_Helpers::translate('Settings'),
         );
 
@@ -388,6 +389,10 @@ class Olama_Transportation_Admin
                     return array('id' => (int) $user->ID, 'name' => $user->display_name);
                 }, $trip_companions)),
             ));
+        } elseif ($tab === 'reports') {
+            $path = OLAMA_TRANSPORTATION_PATH . 'assets/js/reports.js';
+            wp_enqueue_script('olama-transportation-reports', OLAMA_TRANSPORTATION_URL . 'assets/js/reports.js', array(), $this->asset_version($path), true);
+            wp_localize_script('olama-transportation-reports', 'olamaReports', array('restUrl'=>esc_url_raw(rest_url('olama-transportation/v1/')),'restNonce'=>wp_create_nonce('wp_rest'),'year'=>(int)$selected_year_id));
         }
     }
 

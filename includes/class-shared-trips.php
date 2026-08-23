@@ -630,6 +630,54 @@ class Olama_Transportation_Shared_Trips
         );
     }
 
+    /** Return the school-level transportation report, optionally filtered by grade and section. */
+    public static function school_report($academic_year_id, $direction, $grade = '', $section = '')
+    {
+        global $wpdb;
+        $year = absint($academic_year_id);
+        $direction = sanitize_key($direction);
+        if (!$year || !in_array($direction, array('morning', 'afternoon'), true)) return array('filters'=>array(), 'rows'=>array());
+
+        $study_year = preg_replace('/\s*([\/\-])\s*/', '$1', Olama_Transportation_Bus::study_year($year));
+        $alternate_year = strpos($study_year, '/') !== false ? str_replace('/', '-', $study_year) : str_replace('-', '/', $study_year);
+        $members = Olama_Transportation_DB::table('shared_trip_students');
+        $trips = Olama_Transportation_DB::table('shared_trips');
+        $buses = Olama_Transportation_DB::table('buses');
+        $families = olama_core()->read_models()->table('families');
+        $student_years = olama_core()->read_models()->table('student_years');
+        $students = olama_core()->read_models()->table('students');
+        $where = 't.academic_year_id=%d AND t.direction=%s AND t.status IN (\'draft\',\'published\') AND sy.study_year IN (%s,%s)';
+        $params = array($year, $direction, $study_year, $alternate_year);
+        if ($grade !== '') { $where .= ' AND sy.class_name=%s'; $params[] = sanitize_text_field($grade); }
+        if ($section !== '') { $where .= ' AND sy.section_name=%s'; $params[] = sanitize_text_field($section); }
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT DISTINCT m.student_uid,COALESCE(NULLIF(s.student_name,''),m.student_name) student_name,
+                    sy.class_name grade_name,sy.section_name,f.father_mobile,f.mother_mobile,
+                    COALESCE(NULLIF(f.family_address,''),NULLIF(f.address,''),'') oracle_address,
+                    t.id trip_id,t.name trip_name,COALESCE(NULLIF(driver.display_name,''),NULLIF(b.driver_source_name,''),'') driver_name,
+                    b.bus_number,t.bus_trip_number,m.family_uid
+             FROM {$members} m INNER JOIN {$trips} t ON t.id=m.trip_id
+             LEFT JOIN {$buses} b ON b.id=t.bus_id
+             LEFT JOIN {$wpdb->users} driver ON driver.ID=b.driver_user_id
+             LEFT JOIN {$students} s ON s.student_uid=m.student_uid
+             LEFT JOIN {$student_years} sy ON sy.student_uid=m.student_uid AND sy.family_uid=m.family_uid
+                 AND sy.study_year IN (%s,%s)
+             LEFT JOIN {$families} f ON f.family_uid=m.family_uid
+             WHERE {$where}
+             ORDER BY sy.class_name,sy.section_name,student_name",
+            $study_year, $alternate_year, ...$params
+        ), ARRAY_A);
+        $filter_rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT DISTINCT sy.class_name grade_name,sy.section_name
+             FROM {$members} m INNER JOIN {$trips} t ON t.id=m.trip_id
+             INNER JOIN {$student_years} sy ON sy.student_uid=m.student_uid AND sy.family_uid=m.family_uid AND sy.study_year IN (%s,%s)
+             WHERE t.academic_year_id=%d AND t.direction=%s AND t.status IN ('draft','published')
+             ORDER BY sy.class_name,sy.section_name",
+            $study_year, $alternate_year, $year, $direction
+        ), ARRAY_A);
+        return array('filters'=>$filter_rows, 'rows'=>$rows);
+    }
+
     private static function staff_phone($user_id)
     {
         $user_id = absint($user_id);

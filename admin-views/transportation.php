@@ -78,6 +78,14 @@ $translate = array('Olama_School_Helpers', 'translate');
             </div>
         <?php endif; ?>
 
+        <?php if ($active_tab === 'reports'): ?>
+            <div id="olama-school-reports" class="olama-card">
+                <div class="olama-transportation-toolbar"><div><h2><?php echo esc_html($translate('School-level transportation report')); ?></h2><p class="description"><?php echo esc_html($translate('Select a grade and section to view all assigned transportation details.')); ?></p></div></div>
+                <div class="olama-area-filters"><label><?php echo esc_html($translate('Academic Year')); ?><select id="school-report-year"><?php foreach ($years as $year): ?><option value="<?php echo intval($year->id); ?>" <?php selected($selected_year_id,$year->id); ?>><?php echo esc_html($year->year_name); ?></option><?php endforeach; ?></select></label><label><?php echo esc_html($translate('Direction')); ?><select id="school-report-direction"><option value="morning"><?php echo esc_html($translate('Arrival / حضور')); ?></option><option value="afternoon"><?php echo esc_html($translate('Departure / عودة')); ?></option></select></label><label><?php echo esc_html($translate('Grade')); ?><select id="school-report-grade"><option value=""><?php echo esc_html($translate('Select grade')); ?></option></select></label><label><?php echo esc_html($translate('Section')); ?><select id="school-report-section"><option value=""><?php echo esc_html($translate('Select section')); ?></option></select></label><button type="button" class="button" id="school-report-print"><?php echo esc_html($translate('Print report')); ?></button></div>
+                <div id="school-report-feedback" class="olama-operation-result" aria-live="polite"></div><div id="school-report-results"></div>
+            </div>
+        <?php endif; ?>
+
         <?php if (false && $active_tab === 'planning'): // Deprecated polygon planner retained only in source for compatibility. ?>
             <div id="olama-geographic-planner" class="olama-card" data-year-id="<?php echo intval($selected_year_id); ?>">
                 <div class="olama-planner-header">
