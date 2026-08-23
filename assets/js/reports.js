@@ -55,21 +55,27 @@
         }).catch(function (error) { $('#school-report-feedback').textContent = error.message; });
     }
     function printHtml(title, content) { var win = window.open('', '_blank'); if (!win) return; win.document.write('<!doctype html><html><head><meta charset="utf-8"><title>' + title + '</title><style>@page{size:A4 landscape;margin:8mm}body{font-family:Arial,Tahoma,sans-serif;color:#172033}h1{font-size:20px}.school-print-header{font-size:18px;text-align:center;border:1px solid #aeb8c7;background:#f4f7fb;padding:8px;margin:6px 0 10px}.school-report-meta{display:none}table{width:100%;border-collapse:collapse;font-size:9px}th,td{border:1px solid #aeb8c7;padding:4px;text-align:left;vertical-align:top}th{background:#eaf0f7;color:#173b63}.school-report-map-qr{display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle}.school-report-map-qr img{width:54px;height:54px;display:block}.school-report-map-qr small{font-size:7px;margin-top:2px}.school-report-qr-column{text-align:center;vertical-align:middle}@media print{button{display:none}}</style></head><body><button onclick="window.print()">Print report</button><h1>' + title + '</h1>' + content + '</body></html>'); win.document.close(); }
-    function schoolPrintHeader(rows) {
-        var area = reportValue(rows, 'planning_area', '—');
-        var direction = $('#school-report-direction').value === 'morning' ? 'حضور' : 'عودة';
-        var bus = reportValue(rows, 'bus_number', '—').replace(/^Bus\s*/i, '');
-        return '<div class="school-print-header"><strong>' + esc(area) + ' - ' + direction + ' - Bus ' + esc(bus) + '</strong></div>';
+    function selectedFilterLabel(selector, includeWhenEmpty) {
+        var field = $(selector); if (!field) return '';
+        if (!includeWhenEmpty && !field.value) return '';
+        return field.options[field.selectedIndex] ? field.options[field.selectedIndex].text : '';
+    }
+    function schoolPrintHeader() {
+        var filters = [
+            selectedFilterLabel('#school-report-year', true),
+            selectedFilterLabel('#school-report-direction', true),
+            selectedFilterLabel('#school-report-grade'),
+            selectedFilterLabel('#school-report-section'),
+            selectedFilterLabel('#school-report-area'),
+            selectedFilterLabel('#school-report-trip')
+        ].filter(Boolean);
+        return '<div class="school-print-header"><strong>' + esc(filters.join(' - ')) + '</strong></div>';
     }
     function printReport() {
         var source = $('#school-report-results'), clone = source ? source.cloneNode(true) : null;
         if (!clone) return;
         var meta = clone.querySelector('.school-report-meta'); if (meta) meta.remove();
-        var table = clone.querySelector('.school-report-table');
-        if (table) table.querySelectorAll('tr').forEach(function (row) {
-            [6, 7, 8, 9].reverse().forEach(function (index) { if (row.cells[index]) row.deleteCell(index); });
-        });
-        clone.insertAdjacentHTML('afterbegin', schoolPrintHeader(state.data.rows || []));
+        clone.insertAdjacentHTML('afterbegin', schoolPrintHeader());
         printHtml('School transportation report', clone.innerHTML);
     }
     function familyReport() {
