@@ -707,6 +707,7 @@ class Olama_Transportation_Shared_Trips
         if ($transport_status === 'without') { $where .= ' AND t.id IS NULL'; }
         $rows = $wpdb->get_results($wpdb->prepare(
             "SELECT DISTINCT sy.student_uid,COALESCE(NULLIF(s.student_name,''),sy.student_uid) student_name,
+                    f.oracle_family_id,
                     sy.class_name grade_name,sy.section_name,f.father_mobile,f.mother_mobile,
                     COALESCE(NULLIF(f.family_address,''),NULLIF(f.address,''),'') oracle_address,
                     a.name planning_area,t.id trip_id,t.name trip_name,COALESCE(NULLIF(driver.display_name,''),NULLIF(b.driver_source_name,''),'') driver_name,
@@ -724,7 +725,7 @@ class Olama_Transportation_Shared_Trips
              LEFT JOIN {$families} f ON f.family_uid=m.family_uid
              LEFT JOIN {$stops} fs ON fs.family_uid=sy.family_uid
              WHERE {$where}
-             ORDER BY sy.class_name,sy.section_name,student_name",
+             ORDER BY f.oracle_family_id,student_name,sy.class_name,sy.section_name",
             ...array_merge($trip_params, $trip_params, $params)
         ), ARRAY_A);
         $filter_rows = $wpdb->get_results($wpdb->prepare(
