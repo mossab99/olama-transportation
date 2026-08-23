@@ -213,7 +213,7 @@ class Olama_Transportation_Shared_Trips
              INNER JOIN {$stops} fs ON fs.family_uid=f.family_uid OR (fs.family_uid IS NULL AND fs.oracle_family_id=f.oracle_family_id)
              LEFT JOIN {$members} current_member ON current_member.trip_id=%d AND current_member.student_uid=s.student_uid
              WHERE sy.study_year IN (%s,%s) AND fs.major_area_id=%d
-             ORDER BY sy.class_name,sy.section_name,s.student_name",
+             ORDER BY f.oracle_family_id, s.student_name, sy.class_name, sy.section_name",
             $trip['id'],
             $trip['academic_year_id'],
             $trip['direction'],
