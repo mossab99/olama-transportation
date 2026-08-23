@@ -23,9 +23,9 @@
     }
     function params(includeFilters) {
         var type = $('#school-report-type').value, result = {academic_year_id: $('#school-report-year').value, direction: type === 'walking' ? 'all' : $('#school-report-direction').value};
+        if (includeFilters) { result.grade = $('#school-report-grade').value; result.section = $('#school-report-section').value; result.area_id = $('#school-report-area').value; result.trip_id = $('#school-report-trip').value; result.school_filter = $('#school-report-school') ? $('#school-report-school').value : 'all'; if (type !== 'school') result.transport_status = $('#school-report-transport').value; }
         if (type === 'school') result.transport_status = 'with';
-        if (includeFilters) { result.grade = $('#school-report-grade').value; result.section = $('#school-report-section').value; result.area_id = $('#school-report-area').value; result.trip_id = $('#school-report-trip').value; result.transport_status = $('#school-report-transport').value; }
-        if (type === 'walking') { result.transport_status = 'without'; result.grade = ''; result.section = ''; result.area_id = ''; result.trip_id = ''; }
+        if (type === 'walking') { result.transport_status = 'without'; result.grade = ''; result.section = ''; result.area_id = ''; result.trip_id = ''; result.school_filter = 'all'; }
         return new URLSearchParams(result);
     }
     function fetchReport(includeFilters) {
@@ -35,8 +35,15 @@
         var select = $(selector); select.innerHTML = '<option value="">' + esc(placeholder) + '</option>';
         options.forEach(function (item) { var value = valueKey ? item[valueKey] : item, label = labelKey ? item[labelKey] : item; select.insertAdjacentHTML('beforeend', '<option value="' + esc(value) + '">' + esc(label) + '</option>'); });
     }
+    function ensureSchoolFilter() {
+        if ($('#school-report-school')) return;
+        var grade = $('#school-report-grade'); if (!grade || !grade.parentElement) return;
+        var label = document.createElement('label'); label.innerHTML = 'School<select id="school-report-school"><option value="all">All school</option><option value="kgs">All KGs</option></select>';
+        grade.parentElement.insertAdjacentElement('afterend', label);
+        label.querySelector('select').addEventListener('change', render);
+    }
     function loadFilters() {
-        if ($('#school-report-transport')) $('#school-report-transport').parentElement.hidden = true;
+        ensureSchoolFilter(); if ($('#school-report-transport')) $('#school-report-transport').parentElement.hidden = true;
         $('#school-report-feedback').textContent = 'Loading grades, sections, areas and trips…';
         fetchReport(false).then(function (data) {
             state.data = data;
@@ -52,7 +59,7 @@
     function render() {
         fetchReport(true).then(function (data) {
             state.data = data; var rows = (data.rows || []).slice().sort(function (a, b) { return String(a.oracle_family_id || '').localeCompare(String(b.oracle_family_id || ''), undefined, {numeric:true}) || String(a.student_name || '').localeCompare(String(b.student_name || '')); }); var body = rows.map(function (row, index) { var map = row.maps_url ? '<a target="_blank" rel="noopener" href="' + esc(row.maps_url) + '">Map</a>' : '—'; return '<tr><td>' + (index + 1) + '</td><td>' + esc(row.oracle_family_id || '—') + '</td><td>' + esc(row.student_name) + '</td><td>' + esc(row.grade_name) + '</td><td>' + esc(row.section_name) + '</td><td>' + esc(row.planning_area || '—') + '</td><td>' + esc(row.trip_name || '—') + '</td><td>' + esc(row.driver_name || '—') + '</td><td>' + esc(row.bus_number || '—') + '</td><td>' + esc(transportLabel(row.transport_status)) + '</td><td dir="ltr">' + esc(row.father_mobile || '—') + '</td><td dir="ltr">' + esc(row.mother_mobile || '—') + '</td><td>' + esc(row.oracle_address || '—') + '<br>' + map + '</td><td class="school-report-qr-column">' + mapQr(row.maps_url) + '</td></tr>'; }).join('');
-            $('#school-report-results').innerHTML = '<div class="school-report-summary"><strong>' + rows.length + ' students</strong></div>' + reportMeta(rows) + '<table class="wp-list-table widefat striped school-report-table"><thead><tr><th>#</th><th>Family #</th><th>Student Name</th><th>Grade</th><th>Section</th><th>Planning area</th><th>Trip</th><th>Driver</th><th>Bus #</th><th>Transportation</th><th>Father mobile</th><th>Mother mobile</th><th>Oracle address / map</th><th>QR</th></tr></thead><tbody>' + (body || '<tr><td colspan="14">No students found.</td></tr>') + '</tbody></table>'; $('#school-report-feedback').textContent = '';
+            $('#school-report-results').innerHTML = '<div class="school-report-summary"><strong>' + rows.length + ' students</strong></div>' + reportMeta(rows) + '<div class="school-report-table-wrap"><table class="wp-list-table widefat striped school-report-table"><thead><tr><th>#</th><th>Family #</th><th>Student Name</th><th>Grade</th><th>Section</th><th>Planning area</th><th>Trip</th><th>Driver</th><th>Bus #</th><th>Transportation</th><th>Father mobile</th><th>Mother mobile</th><th>Oracle address / map</th><th>QR</th></tr></thead><tbody>' + (body || '<tr><td colspan="14">No students found.</td></tr>') + '</tbody></table></div>'; $('#school-report-feedback').textContent = '';
         }).catch(function (error) { $('#school-report-feedback').textContent = error.message; });
     }
     function printHtml(title, content) { var win = window.open('', '_blank'); if (!win) return; win.document.write('<!doctype html><html><head><meta charset="utf-8"><title>' + title + '</title><style>@page{size:A4 landscape;margin:8mm}body{font-family:Arial,Tahoma,sans-serif;color:#172033}h1{font-size:20px}.school-print-header{font-size:18px;text-align:center;border:1px solid #aeb8c7;background:#f4f7fb;padding:8px;margin:6px 0 10px}.school-report-meta{display:none}table{width:100%;border-collapse:collapse;font-size:9px}th,td{border:1px solid #aeb8c7;padding:4px;text-align:left;vertical-align:top}th{background:#eaf0f7;color:#173b63}.school-report-map-qr{display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle}.school-report-map-qr img{width:54px;height:54px;display:block}.school-report-map-qr small{font-size:7px;margin-top:2px}.school-report-qr-column{text-align:center;vertical-align:middle}@media print{button{display:none}}</style></head><body><button onclick="window.print()">Print report</button><h1>' + title + '</h1>' + content + '</body></html>'); win.document.close(); }
@@ -65,6 +72,7 @@
         var filters = [
             selectedFilterLabel('#school-report-year', true),
             selectedFilterLabel('#school-report-direction', true),
+            $('#school-report-school') && $('#school-report-school').value === 'kgs' ? selectedFilterLabel('#school-report-school', true) : '',
             selectedFilterLabel('#school-report-grade'),
             selectedFilterLabel('#school-report-section'),
             selectedFilterLabel('#school-report-area'),

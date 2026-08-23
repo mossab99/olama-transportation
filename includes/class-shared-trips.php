@@ -677,7 +677,7 @@ class Olama_Transportation_Shared_Trips
     }
 
     /** Return the school-level transportation report, optionally filtered by grade and section. */
-    public static function school_report($academic_year_id, $direction, $grade = '', $section = '', $area_id = '', $trip_id = '', $transport_status = 'all')
+    public static function school_report($academic_year_id, $direction, $grade = '', $section = '', $area_id = '', $trip_id = '', $transport_status = 'all', $school_filter = 'all')
     {
         global $wpdb;
         $year = absint($academic_year_id);
@@ -700,6 +700,9 @@ class Olama_Transportation_Shared_Trips
         $where = 'sy.study_year IN (%s,%s)';
         $params = array($study_year, $alternate_year);
         if ($grade !== '') { $where .= ' AND sy.class_name=%s'; $params[] = sanitize_text_field($grade); }
+        if ($school_filter === 'kgs') {
+            $where .= " AND LOWER(TRIM(sy.class_name)) IN ('kg1','kg 1','kg-1','kg2','kg 2','kg-2','بستان','تمهيدي')";
+        }
         if ($section !== '') { $where .= ' AND sy.section_name=%s'; $params[] = sanitize_text_field($section); }
         if ($area_id !== '') { $where .= ' AND m.major_area_id=%d'; $params[] = absint($area_id); }
         if ($trip_id !== '') { $where .= ' AND t.id=%d'; $params[] = absint($trip_id); }
