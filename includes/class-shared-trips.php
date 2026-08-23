@@ -760,11 +760,25 @@ class Olama_Transportation_Shared_Trips
             foreach ($transport_rows as $row) {
                 $key = (string) $row['student_uid'];
                 if (!isset($grouped[$key])) {
-                    $grouped[$key] = array('student_uid'=>$row['student_uid'],'student_name'=>$row['student_name'],'grade_name'=>$row['grade_name'],'section_name'=>$row['section_name'],'arrival'=>array(),'departure'=>array());
+                    $grouped[$key] = array('student_uid'=>$row['student_uid'],'student_name'=>$row['student_name'],'grade_name'=>$row['grade_name'],'section_name'=>$row['section_name'],'arrival'=>array(),'departure'=>array(),'legacy_directions'=>array(),'legacy_trips'=>array(),'legacy_drivers'=>array(),'legacy_buses'=>array());
                 }
                 $slot = $row['direction'] === 'morning' ? 'arrival' : 'departure';
                 $grouped[$key][$slot] = array('trip_name'=>$row['trip_name'],'driver_name'=>$row['driver_name'],'bus_number'=>$row['bus_number']);
+                $grouped[$key]['legacy_directions'][$slot] = $row['direction'] === 'morning' ? 'حضور' : 'عودة';
+                if (!empty($row['trip_name'])) $grouped[$key]['legacy_trips'][$slot] = $row['trip_name'];
+                if (!empty($row['driver_name'])) $grouped[$key]['legacy_drivers'][$slot] = $row['driver_name'];
+                if (!empty($row['bus_number'])) $grouped[$key]['legacy_buses'][$slot] = $row['bus_number'];
             }
+            foreach ($grouped as &$student) {
+                // Keep cached copies of the previous report script useful while clients
+                // receive the new one-row-per-student structure.
+                $student['direction'] = implode(' / ', $student['legacy_directions']);
+                $student['trip_name'] = implode(' / ', $student['legacy_trips']);
+                $student['driver_name'] = implode(' / ', $student['legacy_drivers']);
+                $student['bus_number'] = implode(' / ', $student['legacy_buses']);
+                unset($student['legacy_directions'], $student['legacy_trips'], $student['legacy_drivers'], $student['legacy_buses']);
+            }
+            unset($student);
             $family['transport_rows'] = array_values($grouped);
         }
         unset($family); return array('items'=>$families['items'], 'total'=>(int)($families['pagination']['total'] ?? count($families['items'])));
