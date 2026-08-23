@@ -698,6 +698,8 @@ class Olama_Transportation_Shared_Trips
         global $wpdb;
         $search = trim(sanitize_text_field($search));
         if ($search === '') return array('items'=>array(), 'total'=>0);
+        $study_year = preg_replace('/\s*([\/\-])\s*/', '$1', Olama_Transportation_Bus::study_year(absint($academic_year_id)));
+        $alternate_year = strpos($study_year, '/') !== false ? str_replace('/', '-', $study_year) : str_replace('-', '/', $study_year);
         $families = Olama_Transportation_Family_Locations::admin_list(absint($academic_year_id), array('export_all'=>true));
         $families['items'] = array_values(array_filter($families['items'], static function ($family) use ($search) {
             $haystack = (string)($family['oracle_family_id'] ?? '') . ' ' . (string)($family['family_name'] ?? '') . ' ' . (string)($family['father_mobile'] ?? '') . ' ' . (string)($family['mother_mobile'] ?? '');
@@ -706,7 +708,7 @@ class Olama_Transportation_Shared_Trips
         }));
         $members = Olama_Transportation_DB::table('shared_trip_students'); $trips = Olama_Transportation_DB::table('shared_trips'); $buses = Olama_Transportation_DB::table('buses'); $students = olama_core()->read_models()->table('students'); $student_years = olama_core()->read_models()->table('student_years');
         foreach ($families['items'] as &$family) {
-            $family['transport_rows'] = $wpdb->get_results($wpdb->prepare("SELECT m.student_uid,m.student_name,sy.class_name grade_name,sy.section_name,t.direction,t.name trip_name,b.bus_number,COALESCE(NULLIF(driver.display_name,''),NULLIF(b.driver_source_name,''),'') driver_name FROM {$members} m LEFT JOIN {$trips} t ON t.id=m.trip_id AND t.status IN ('draft','published') LEFT JOIN {$buses} b ON b.id=t.bus_id LEFT JOIN {$wpdb->users} driver ON driver.ID=b.driver_user_id LEFT JOIN {$students} s ON s.student_uid=m.student_uid LEFT JOIN {$student_years} sy ON sy.student_uid=m.student_uid AND sy.family_uid=m.family_uid WHERE m.family_uid=%s ORDER BY sy.class_name,sy.section_name,m.student_name", $family['family_uid']), ARRAY_A);
+            $family['transport_rows'] = $wpdb->get_results($wpdb->prepare("SELECT m.student_uid,m.student_name,sy.class_name grade_name,sy.section_name,t.direction,t.name trip_name,b.bus_number,COALESCE(NULLIF(driver.display_name,''),NULLIF(b.driver_source_name,''),'') driver_name FROM {$members} m LEFT JOIN {$trips} t ON t.id=m.trip_id AND t.academic_year_id=%d AND t.status IN ('draft','published') LEFT JOIN {$buses} b ON b.id=t.bus_id LEFT JOIN {$wpdb->users} driver ON driver.ID=b.driver_user_id LEFT JOIN {$students} s ON s.student_uid=m.student_uid LEFT JOIN {$student_years} sy ON sy.student_uid=m.student_uid AND sy.family_uid=m.family_uid AND sy.study_year IN (%s,%s) WHERE m.family_uid=%s AND t.id IS NOT NULL ORDER BY sy.class_name,sy.section_name,m.student_name", absint($academic_year_id), $study_year, $alternate_year, $family['family_uid']), ARRAY_A);
         }
         unset($family); return array('items'=>$families['items'], 'total'=>(int)($families['pagination']['total'] ?? count($families['items'])));
     }
