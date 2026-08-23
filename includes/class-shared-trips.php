@@ -631,12 +631,12 @@ class Olama_Transportation_Shared_Trips
     }
 
     /** Return the school-level transportation report, optionally filtered by grade and section. */
-    public static function school_report($academic_year_id, $direction, $grade = '', $section = '')
+    public static function school_report($academic_year_id, $direction, $grade = '', $section = '', $area_id = '', $trip_id = '', $transport_status = 'all')
     {
         global $wpdb;
         $year = absint($academic_year_id);
         $direction = sanitize_key($direction);
-        if (!$year || !in_array($direction, array('morning', 'afternoon'), true)) return array('filters'=>array(), 'rows'=>array());
+        if (!$year || !in_array($direction, array('morning', 'afternoon'), true)) return array('filters'=>array(), 'areas'=>array(), 'trips'=>array(), 'rows'=>array());
 
         $study_year = preg_replace('/\s*([\/\-])\s*/', '$1', Olama_Transportation_Bus::study_year($year));
         $alternate_year = strpos($study_year, '/') !== false ? str_replace('/', '-', $study_year) : str_replace('-', '/', $study_year);
@@ -646,36 +646,44 @@ class Olama_Transportation_Shared_Trips
         $families = olama_core()->read_models()->table('families');
         $student_years = olama_core()->read_models()->table('student_years');
         $students = olama_core()->read_models()->table('students');
-        $where = 't.academic_year_id=%d AND t.direction=%s AND t.status IN (\'draft\',\'published\') AND sy.study_year IN (%s,%s)';
-        $params = array($year, $direction, $study_year, $alternate_year);
+        $where = 'sy.study_year IN (%s,%s)';
+        $params = array($study_year, $alternate_year);
         if ($grade !== '') { $where .= ' AND sy.class_name=%s'; $params[] = sanitize_text_field($grade); }
         if ($section !== '') { $where .= ' AND sy.section_name=%s'; $params[] = sanitize_text_field($section); }
+        if ($area_id !== '') { $where .= ' AND m.major_area_id=%d'; $params[] = absint($area_id); }
+        if ($trip_id !== '') { $where .= ' AND t.id=%d'; $params[] = absint($trip_id); }
+        if ($transport_status === 'with') { $where .= ' AND t.id IS NOT NULL'; }
+        if ($transport_status === 'without') { $where .= ' AND t.id IS NULL'; }
         $rows = $wpdb->get_results($wpdb->prepare(
-            "SELECT DISTINCT m.student_uid,COALESCE(NULLIF(s.student_name,''),m.student_name) student_name,
+            "SELECT DISTINCT sy.student_uid,COALESCE(NULLIF(s.student_name,''),sy.student_uid) student_name,
                     sy.class_name grade_name,sy.section_name,f.father_mobile,f.mother_mobile,
                     COALESCE(NULLIF(f.family_address,''),NULLIF(f.address,''),'') oracle_address,
-                    t.id trip_id,t.name trip_name,COALESCE(NULLIF(driver.display_name,''),NULLIF(b.driver_source_name,''),'') driver_name,
-                    b.bus_number,t.bus_trip_number,m.family_uid
-             FROM {$members} m INNER JOIN {$trips} t ON t.id=m.trip_id
+                    a.name planning_area,t.id trip_id,t.name trip_name,COALESCE(NULLIF(driver.display_name,''),NULLIF(b.driver_source_name,''),'') driver_name,
+                    b.bus_number,t.bus_trip_number,sy.family_uid,
+                    CASE WHEN t.id IS NULL THEN 'without' ELSE 'with' END transport_status
+             FROM {$student_years} sy
+             LEFT JOIN {$members} m ON m.student_uid=sy.student_uid AND m.family_uid=sy.family_uid
+                 AND m.trip_id IN (SELECT current_trip.id FROM {$trips} current_trip WHERE current_trip.academic_year_id=%d AND current_trip.direction=%s AND current_trip.status IN ('draft','published'))
+             LEFT JOIN {$trips} t ON t.id=m.trip_id AND t.academic_year_id=%d AND t.direction=%s AND t.status IN ('draft','published')
              LEFT JOIN {$buses} b ON b.id=t.bus_id
              LEFT JOIN {$wpdb->users} driver ON driver.ID=b.driver_user_id
-             LEFT JOIN {$students} s ON s.student_uid=m.student_uid
-             LEFT JOIN {$student_years} sy ON sy.student_uid=m.student_uid AND sy.family_uid=m.family_uid
-                 AND sy.study_year IN (%s,%s)
+             LEFT JOIN {$wpdb->prefix}olama_transport_major_areas a ON a.id=m.major_area_id
+             LEFT JOIN {$students} s ON s.student_uid=sy.student_uid
              LEFT JOIN {$families} f ON f.family_uid=m.family_uid
              WHERE {$where}
              ORDER BY sy.class_name,sy.section_name,student_name",
-            $study_year, $alternate_year, ...$params
+            $year, $direction, $year, $direction, ...$params
         ), ARRAY_A);
         $filter_rows = $wpdb->get_results($wpdb->prepare(
             "SELECT DISTINCT sy.class_name grade_name,sy.section_name
-             FROM {$members} m INNER JOIN {$trips} t ON t.id=m.trip_id
-             INNER JOIN {$student_years} sy ON sy.student_uid=m.student_uid AND sy.family_uid=m.family_uid AND sy.study_year IN (%s,%s)
-             WHERE t.academic_year_id=%d AND t.direction=%s AND t.status IN ('draft','published')
+             FROM {$student_years} sy
+             WHERE sy.study_year IN (%s,%s)
              ORDER BY sy.class_name,sy.section_name",
-            $study_year, $alternate_year, $year, $direction
+            $study_year, $alternate_year
         ), ARRAY_A);
-        return array('filters'=>$filter_rows, 'rows'=>$rows);
+        $area_rows = $wpdb->get_results($wpdb->prepare("SELECT DISTINCT a.id,a.name FROM {$members} m INNER JOIN {$trips} t ON t.id=m.trip_id LEFT JOIN {$wpdb->prefix}olama_transport_major_areas a ON a.id=m.major_area_id WHERE t.academic_year_id=%d AND t.direction=%s AND t.status IN ('draft','published') AND a.id IS NOT NULL ORDER BY a.name", $year, $direction), ARRAY_A);
+        $trip_rows = $wpdb->get_results($wpdb->prepare("SELECT DISTINCT t.id,t.name FROM {$trips} t WHERE t.academic_year_id=%d AND t.direction=%s AND t.status IN ('draft','published') ORDER BY t.name,t.id", $year, $direction), ARRAY_A);
+        return array('filters'=>$filter_rows, 'areas'=>$area_rows, 'trips'=>$trip_rows, 'rows'=>$rows);
     }
 
     private static function staff_phone($user_id)
