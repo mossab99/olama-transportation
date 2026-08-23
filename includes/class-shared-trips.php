@@ -623,7 +623,7 @@ class Olama_Transportation_Shared_Trips
         return array(
             'trip' => array(
                 'id'=>$trip['id'],'name'=>$trip['name'],'direction'=>$trip['direction'],'bus_number'=>$trip['bus_number'],
-                'bus_trip_number'=>$trip['bus_trip_number'],'driver_name'=>$trip['driver_name'],'driver_phone'=>self::staff_phone($trip['driver_user_id']),
+                'bus_trip_number'=>$trip['bus_trip_number'],'driver_name'=>$trip['driver_name'],
                 'companion_name'=>$trip['companion_name'],'companion_phone'=>self::staff_phone($trip['companion_user_id']),
             ),
             'students' => $rows,
