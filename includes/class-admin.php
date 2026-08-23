@@ -391,7 +391,8 @@ class Olama_Transportation_Admin
             ));
         } elseif ($tab === 'reports') {
             $path = OLAMA_TRANSPORTATION_PATH . 'assets/js/reports.js';
-            wp_enqueue_script('olama-transportation-reports', OLAMA_TRANSPORTATION_URL . 'assets/js/reports.js', array(), $this->asset_version($path), true);
+            wp_enqueue_script('olama-qrcode', 'https://cdn.jsdelivr.net/npm/qrcode-generator@2.0.4/dist/qrcode.js', array(), '2.0.4', true);
+            wp_enqueue_script('olama-transportation-reports', OLAMA_TRANSPORTATION_URL . 'assets/js/reports.js', array('olama-qrcode'), $this->asset_version($path), true);
             wp_localize_script('olama-transportation-reports', 'olamaReports', array('restUrl'=>esc_url_raw(rest_url('olama-transportation/v1/')),'restNonce'=>wp_create_nonce('wp_rest'),'year'=>(int)$selected_year_id));
         }
     }
