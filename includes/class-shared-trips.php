@@ -189,6 +189,7 @@ class Olama_Transportation_Shared_Trips
         $study_year = preg_replace('/\s*([\/-])\s*/', '$1', Olama_Transportation_Bus::study_year($trip['academic_year_id']));
         $alternate_year = strpos($study_year, '/') !== false ? str_replace('/', '-', $study_year) : str_replace('-', '/', $study_year);
         $students = olama_core()->read_models()->table('students');
+        $stops = Olama_Transportation_DB::table('family_stops');
         $student_years = olama_core()->read_models()->table('student_years');
         $families = olama_core()->read_models()->table('families');
         $stops = Olama_Transportation_DB::table('family_stops');
@@ -636,7 +637,7 @@ class Olama_Transportation_Shared_Trips
         global $wpdb;
         $year = absint($academic_year_id);
         $direction = sanitize_key($direction);
-        if (!$year || !in_array($direction, array('morning', 'afternoon'), true)) return array('filters'=>array(), 'areas'=>array(), 'trips'=>array(), 'rows'=>array());
+        if (!$year || !in_array($direction, array('all', 'morning', 'afternoon'), true)) return array('filters'=>array(), 'areas'=>array(), 'trips'=>array(), 'rows'=>array());
 
         $study_year = preg_replace('/\s*([\/\-])\s*/', '$1', Olama_Transportation_Bus::study_year($year));
         $alternate_year = strpos($study_year, '/') !== false ? str_replace('/', '-', $study_year) : str_replace('-', '/', $study_year);
@@ -646,6 +647,10 @@ class Olama_Transportation_Shared_Trips
         $families = olama_core()->read_models()->table('families');
         $student_years = olama_core()->read_models()->table('student_years');
         $students = olama_core()->read_models()->table('students');
+        $trip_scope = "current_trip.academic_year_id=%d AND current_trip.status IN ('draft','published')";
+        $trip_join = "t.academic_year_id=%d AND t.status IN ('draft','published')";
+        $trip_params = array($year);
+        if ($direction !== 'all') { $trip_scope .= ' AND current_trip.direction=%s'; $trip_join .= ' AND t.direction=%s'; $trip_params[] = $direction; }
         $where = 'sy.study_year IN (%s,%s)';
         $params = array($study_year, $alternate_year);
         if ($grade !== '') { $where .= ' AND sy.class_name=%s'; $params[] = sanitize_text_field($grade); }
@@ -660,19 +665,21 @@ class Olama_Transportation_Shared_Trips
                     COALESCE(NULLIF(f.family_address,''),NULLIF(f.address,''),'') oracle_address,
                     a.name planning_area,t.id trip_id,t.name trip_name,COALESCE(NULLIF(driver.display_name,''),NULLIF(b.driver_source_name,''),'') driver_name,
                     b.bus_number,t.bus_trip_number,sy.family_uid,
+                    CASE WHEN fs.maps_url IS NOT NULL AND fs.maps_url<>'' THEN fs.maps_url WHEN fs.latitude IS NOT NULL AND fs.longitude IS NOT NULL THEN CONCAT('https://www.google.com/maps?q=',fs.latitude,',',fs.longitude) ELSE '' END maps_url,
                     CASE WHEN t.id IS NULL THEN 'without' ELSE 'with' END transport_status
              FROM {$student_years} sy
              LEFT JOIN {$members} m ON m.student_uid=sy.student_uid AND m.family_uid=sy.family_uid
-                 AND m.trip_id IN (SELECT current_trip.id FROM {$trips} current_trip WHERE current_trip.academic_year_id=%d AND current_trip.direction=%s AND current_trip.status IN ('draft','published'))
-             LEFT JOIN {$trips} t ON t.id=m.trip_id AND t.academic_year_id=%d AND t.direction=%s AND t.status IN ('draft','published')
+                 AND m.trip_id IN (SELECT current_trip.id FROM {$trips} current_trip WHERE {$trip_scope})
+             LEFT JOIN {$trips} t ON t.id=m.trip_id AND {$trip_join}
              LEFT JOIN {$buses} b ON b.id=t.bus_id
              LEFT JOIN {$wpdb->users} driver ON driver.ID=b.driver_user_id
              LEFT JOIN {$wpdb->prefix}olama_transport_major_areas a ON a.id=m.major_area_id
              LEFT JOIN {$students} s ON s.student_uid=sy.student_uid
              LEFT JOIN {$families} f ON f.family_uid=m.family_uid
+             LEFT JOIN {$stops} fs ON fs.family_uid=sy.family_uid
              WHERE {$where}
              ORDER BY sy.class_name,sy.section_name,student_name",
-            $year, $direction, $year, $direction, ...$params
+            ...array_merge($trip_params, $trip_params, $params)
         ), ARRAY_A);
         $filter_rows = $wpdb->get_results($wpdb->prepare(
             "SELECT DISTINCT sy.class_name grade_name,sy.section_name
@@ -684,6 +691,27 @@ class Olama_Transportation_Shared_Trips
         $area_rows = $wpdb->get_results($wpdb->prepare("SELECT DISTINCT a.id,a.name FROM {$members} m INNER JOIN {$trips} t ON t.id=m.trip_id LEFT JOIN {$wpdb->prefix}olama_transport_major_areas a ON a.id=m.major_area_id WHERE t.academic_year_id=%d AND t.direction=%s AND t.status IN ('draft','published') AND a.id IS NOT NULL ORDER BY a.name", $year, $direction), ARRAY_A);
         $trip_rows = $wpdb->get_results($wpdb->prepare("SELECT DISTINCT t.id,t.name FROM {$trips} t WHERE t.academic_year_id=%d AND t.direction=%s AND t.status IN ('draft','published') ORDER BY t.name,t.id", $year, $direction), ARRAY_A);
         return array('filters'=>$filter_rows, 'areas'=>$area_rows, 'trips'=>$trip_rows, 'rows'=>$rows);
+    }
+
+    public static function family_report($academic_year_id, $search)
+    {
+        global $wpdb;
+        $families = Olama_Transportation_Family_Locations::admin_list(absint($academic_year_id), array('search'=>sanitize_text_field($search), 'export_all'=>true));
+        $members = Olama_Transportation_DB::table('shared_trip_students'); $trips = Olama_Transportation_DB::table('shared_trips'); $buses = Olama_Transportation_DB::table('buses'); $students = olama_core()->read_models()->table('students'); $student_years = olama_core()->read_models()->table('student_years');
+        foreach ($families['items'] as &$family) {
+            $family['transport_rows'] = $wpdb->get_results($wpdb->prepare("SELECT m.student_uid,m.student_name,sy.class_name grade_name,sy.section_name,t.direction,t.name trip_name,b.bus_number,COALESCE(NULLIF(driver.display_name,''),NULLIF(b.driver_source_name,''),'') driver_name FROM {$members} m LEFT JOIN {$trips} t ON t.id=m.trip_id AND t.status IN ('draft','published') LEFT JOIN {$buses} b ON b.id=t.bus_id LEFT JOIN {$wpdb->users} driver ON driver.ID=b.driver_user_id LEFT JOIN {$students} s ON s.student_uid=m.student_uid LEFT JOIN {$student_years} sy ON sy.student_uid=m.student_uid AND sy.family_uid=m.family_uid WHERE m.family_uid=%s ORDER BY sy.class_name,sy.section_name,m.student_name", $family['family_uid']), ARRAY_A);
+        }
+        unset($family); return array('items'=>$families['items'], 'total'=>(int)($families['pagination']['total'] ?? count($families['items'])));
+    }
+
+    public static function unassigned_report($academic_year_id)
+    {
+        global $wpdb;
+        $year = absint($academic_year_id); $study = preg_replace('/\s*([\/\-])\s*/', '$1', Olama_Transportation_Bus::study_year($year)); $alternate = strpos($study, '/') !== false ? str_replace('/', '-', $study) : str_replace('-', '/', $study);
+        $tr = $wpdb->prefix . 'olama_core_student_transportation'; $sy = olama_core()->read_models()->table('student_years'); $s = olama_core()->read_models()->table('students'); $f = olama_core()->read_models()->table('families'); $members = Olama_Transportation_DB::table('shared_trip_students'); $trips = Olama_Transportation_DB::table('shared_trips'); $stops = Olama_Transportation_DB::table('family_stops');
+        if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $tr)) !== $tr) return array('rows'=>array());
+        $rows = $wpdb->get_results($wpdb->prepare("SELECT DISTINCT tr.student_uid,COALESCE(NULLIF(s.student_name,''),tr.student_uid) student_name,sy.class_name grade_name,sy.section_name,f.oracle_family_id,f.father_name,f.father_mobile,f.mother_mobile,COALESCE(NULLIF(f.family_address,''),NULLIF(f.address,''),'') oracle_address,fs.latitude,fs.longitude,fs.maps_url FROM {$tr} tr LEFT JOIN {$sy} sy ON sy.student_uid=tr.student_uid AND sy.family_uid=tr.family_uid AND sy.study_year IN (%s,%s) LEFT JOIN {$s} s ON s.student_uid=tr.student_uid LEFT JOIN {$f} f ON f.family_uid=tr.family_uid LEFT JOIN {$stops} fs ON fs.family_uid=tr.family_uid WHERE tr.study_year IN (%s,%s) AND (tr.is_active IS NULL OR tr.is_active=1) AND NOT EXISTS (SELECT 1 FROM {$members} m INNER JOIN {$trips} t ON t.id=m.trip_id AND t.status IN ('draft','published') WHERE m.student_uid=tr.student_uid AND m.family_uid=tr.family_uid AND t.academic_year_id=%d)", $study,$alternate,$study,$alternate,$year), ARRAY_A);
+        foreach ($rows as &$row) { $row['maps_url'] = $row['maps_url'] ?: (($row['latitude'] !== null && $row['longitude'] !== null) ? 'https://www.google.com/maps?q=' . rawurlencode($row['latitude'] . ',' . $row['longitude']) : ''); } unset($row); return array('rows'=>$rows);
     }
 
     private static function staff_phone($user_id)
