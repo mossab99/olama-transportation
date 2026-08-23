@@ -42,8 +42,27 @@
         grade.parentElement.insertAdjacentElement('afterend', label);
         label.querySelector('select').addEventListener('change', render);
     }
+    function ensureReportSortFilters() {
+        if ($('#school-report-sort')) return;
+        var anchor = $('#school-report-school') || $('#school-report-grade'); if (!anchor || !anchor.parentElement) return;
+        var sortLabel = document.createElement('label'); sortLabel.innerHTML = 'Sort by<select id="school-report-sort"><option value="family">Family #</option><option value="student">Student name</option><option value="grade">Grade / section</option><option value="area">Planning area</option><option value="trip">Trip</option></select>';
+        var orderLabel = document.createElement('label'); orderLabel.innerHTML = 'Order<select id="school-report-sort-order"><option value="asc">Ascending</option><option value="desc">Descending</option></select>';
+        anchor.parentElement.insertAdjacentElement('afterend', sortLabel); sortLabel.insertAdjacentElement('afterend', orderLabel);
+        sortLabel.querySelector('select').addEventListener('change', render); orderLabel.querySelector('select').addEventListener('change', render);
+    }
+    function sortReportRows(rows) {
+        var key = $('#school-report-sort') ? $('#school-report-sort').value : 'family', descending = $('#school-report-sort-order') && $('#school-report-sort-order').value === 'desc';
+        var values = function (row) {
+            if (key === 'student') return [row.student_name || ''];
+            if (key === 'grade') return [row.grade_name || '', row.section_name || '', row.student_name || ''];
+            if (key === 'area') return [row.planning_area || '', row.student_name || ''];
+            if (key === 'trip') return [row.trip_name || '', row.student_name || ''];
+            return [row.oracle_family_id || '', row.student_name || ''];
+        };
+        return rows.slice().sort(function (a, b) { var left = values(a), right = values(b), result = 0; for (var index = 0; index < left.length && result === 0; index++) result = String(left[index]).localeCompare(String(right[index]), 'ar', {numeric:true, sensitivity:'base'}); return descending ? -result : result; });
+    }
     function loadFilters() {
-        ensureSchoolFilter(); if ($('#school-report-transport')) $('#school-report-transport').parentElement.hidden = true;
+        ensureSchoolFilter(); ensureReportSortFilters(); if ($('#school-report-transport')) $('#school-report-transport').parentElement.hidden = true;
         $('#school-report-feedback').textContent = 'Loading grades, sections, areas and trips…';
         fetchReport(false).then(function (data) {
             state.data = data;
@@ -58,7 +77,7 @@
     }
     function render() {
         fetchReport(true).then(function (data) {
-            state.data = data; var rows = (data.rows || []).slice().sort(function (a, b) { return String(a.oracle_family_id || '').localeCompare(String(b.oracle_family_id || ''), undefined, {numeric:true}) || String(a.student_name || '').localeCompare(String(b.student_name || '')); }); var body = rows.map(function (row, index) { var map = row.maps_url ? '<a target="_blank" rel="noopener" href="' + esc(row.maps_url) + '">Map</a>' : '—'; return '<tr><td>' + (index + 1) + '</td><td>' + esc(row.oracle_family_id || '—') + '</td><td>' + esc(row.student_name) + '</td><td>' + esc(row.grade_name) + '</td><td>' + esc(row.section_name) + '</td><td>' + esc(row.planning_area || '—') + '</td><td>' + esc(row.trip_name || '—') + '</td><td>' + esc(row.driver_name || '—') + '</td><td>' + esc(row.bus_number || '—') + '</td><td>' + esc(transportLabel(row.transport_status)) + '</td><td dir="ltr">' + esc(row.father_mobile || '—') + '</td><td dir="ltr">' + esc(row.mother_mobile || '—') + '</td><td>' + esc(row.oracle_address || '—') + '<br>' + map + '</td><td class="school-report-qr-column">' + mapQr(row.maps_url) + '</td></tr>'; }).join('');
+            state.data = data; var rows = sortReportRows(data.rows || []); var body = rows.map(function (row, index) { var map = row.maps_url ? '<a target="_blank" rel="noopener" href="' + esc(row.maps_url) + '">Map</a>' : '—'; return '<tr><td>' + (index + 1) + '</td><td>' + esc(row.oracle_family_id || '—') + '</td><td>' + esc(row.student_name) + '</td><td>' + esc(row.grade_name) + '</td><td>' + esc(row.section_name) + '</td><td>' + esc(row.planning_area || '—') + '</td><td>' + esc(row.trip_name || '—') + '</td><td>' + esc(row.driver_name || '—') + '</td><td>' + esc(row.bus_number || '—') + '</td><td>' + esc(transportLabel(row.transport_status)) + '</td><td dir="ltr">' + esc(row.father_mobile || '—') + '</td><td dir="ltr">' + esc(row.mother_mobile || '—') + '</td><td>' + esc(row.oracle_address || '—') + '<br>' + map + '</td><td class="school-report-qr-column">' + mapQr(row.maps_url) + '</td></tr>'; }).join('');
             $('#school-report-results').innerHTML = '<div class="school-report-summary"><strong>' + rows.length + ' students</strong></div>' + reportMeta(rows) + '<div class="school-report-table-wrap"><table class="wp-list-table widefat striped school-report-table"><thead><tr><th>#</th><th>Family #</th><th>Student Name</th><th>Grade</th><th>Section</th><th>Planning area</th><th>Trip</th><th>Driver</th><th>Bus #</th><th>Transportation</th><th>Father mobile</th><th>Mother mobile</th><th>Oracle address / map</th><th>QR</th></tr></thead><tbody>' + (body || '<tr><td colspan="14">No students found.</td></tr>') + '</tbody></table></div>'; $('#school-report-feedback').textContent = '';
         }).catch(function (error) { $('#school-report-feedback').textContent = error.message; });
     }
