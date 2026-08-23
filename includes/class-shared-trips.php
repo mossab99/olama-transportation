@@ -755,7 +755,17 @@ class Olama_Transportation_Shared_Trips
         }));
         $members = Olama_Transportation_DB::table('shared_trip_students'); $trips = Olama_Transportation_DB::table('shared_trips'); $buses = Olama_Transportation_DB::table('buses'); $students = olama_core()->read_models()->table('students'); $student_years = olama_core()->read_models()->table('student_years');
         foreach ($families['items'] as &$family) {
-            $family['transport_rows'] = $wpdb->get_results($wpdb->prepare("SELECT m.student_uid,m.student_name,sy.class_name grade_name,sy.section_name,t.direction,t.name trip_name,b.bus_number,COALESCE(NULLIF(driver.display_name,''),NULLIF(b.driver_source_name,''),'') driver_name FROM {$members} m LEFT JOIN {$trips} t ON t.id=m.trip_id AND t.academic_year_id=%d AND t.status IN ('draft','published') LEFT JOIN {$buses} b ON b.id=t.bus_id LEFT JOIN {$wpdb->users} driver ON driver.ID=b.driver_user_id LEFT JOIN {$students} s ON s.student_uid=m.student_uid LEFT JOIN {$student_years} sy ON sy.student_uid=m.student_uid AND sy.family_uid=m.family_uid AND sy.study_year IN (%s,%s) WHERE m.family_uid=%s AND t.id IS NOT NULL ORDER BY sy.class_name,sy.section_name,m.student_name", absint($academic_year_id), $study_year, $alternate_year, $family['family_uid']), ARRAY_A);
+            $transport_rows = $wpdb->get_results($wpdb->prepare("SELECT m.student_uid,m.student_name,sy.class_name grade_name,sy.section_name,t.direction,t.name trip_name,b.bus_number,COALESCE(NULLIF(driver.display_name,''),NULLIF(b.driver_source_name,''),'') driver_name FROM {$members} m LEFT JOIN {$trips} t ON t.id=m.trip_id AND t.academic_year_id=%d AND t.status IN ('draft','published') LEFT JOIN {$buses} b ON b.id=t.bus_id LEFT JOIN {$wpdb->users} driver ON driver.ID=b.driver_user_id LEFT JOIN {$students} s ON s.student_uid=m.student_uid LEFT JOIN {$student_years} sy ON sy.student_uid=m.student_uid AND sy.family_uid=m.family_uid AND sy.study_year IN (%s,%s) WHERE m.family_uid=%s AND t.id IS NOT NULL ORDER BY sy.class_name,sy.section_name,m.student_name", absint($academic_year_id), $study_year, $alternate_year, $family['family_uid']), ARRAY_A);
+            $grouped = array();
+            foreach ($transport_rows as $row) {
+                $key = (string) $row['student_uid'];
+                if (!isset($grouped[$key])) {
+                    $grouped[$key] = array('student_uid'=>$row['student_uid'],'student_name'=>$row['student_name'],'grade_name'=>$row['grade_name'],'section_name'=>$row['section_name'],'arrival'=>array(),'departure'=>array());
+                }
+                $slot = $row['direction'] === 'morning' ? 'arrival' : 'departure';
+                $grouped[$key][$slot] = array('trip_name'=>$row['trip_name'],'driver_name'=>$row['driver_name'],'bus_number'=>$row['bus_number']);
+            }
+            $family['transport_rows'] = array_values($grouped);
         }
         unset($family); return array('items'=>$families['items'], 'total'=>(int)($families['pagination']['total'] ?? count($families['items'])));
     }
