@@ -225,22 +225,56 @@ class Olama_Transportation_Shared_Trips
             $alternate_year,
             $area_id
         ), ARRAY_A);
-        $subscription_cache = array();
+        $transport_students = self::transportation_students_for_candidates($study_year, $rows);
         foreach ($rows as &$row) {
-            $family_id = (string) $row['oracle_family_id'];
-            if (!array_key_exists($family_id, $subscription_cache)) {
-                $transport = olama_core()->transportation()->get_family($family_id, $study_year);
-                $subscription_cache[$family_id] = count(array_filter($transport, static function ($record) {
-                    return !isset($record['is_active']) || $record['is_active'] === null || (int) $record['is_active'] === 1;
-                })) > 0;
-            }
             $row['student_id'] = (int) $row['student_id'];
             $row['selected'] = (bool) $row['selected'];
-            $row['subscribed'] = $subscription_cache[$family_id];
+            $row['subscribed'] = isset($transport_students[(string) $row['student_uid']]);
+            // Existing data may contain a student who is no longer subscribed.
+            // Do not present that stale membership as selected.
+            if (!$row['subscribed']) $row['selected'] = false;
             $row['assigned_elsewhere'] = !empty($row['assigned_trip_id']);
         }
         unset($row);
         return array('trip' => $trip, 'area_id' => $area_id, 'students' => $rows);
+    }
+
+    /** Return active transportation records keyed by student UID, not family UID. */
+    private static function transportation_students_for_candidates($study_year, array $rows)
+    {
+        global $wpdb;
+        $result = array();
+        $family_uids = array_values(array_unique(array_filter(array_column($rows, 'family_uid'))));
+        if (!$family_uids) return $result;
+
+        $transportation = $wpdb->prefix . 'olama_core_student_transportation';
+        $student_years = $wpdb->prefix . 'olama_core_student_years';
+        $table_exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $transportation)) === $transportation;
+        if ($table_exists) {
+            $alternate = strpos($study_year, '/') !== false ? str_replace('/', '-', $study_year) : str_replace('-', '/', $study_year);
+            $placeholders = implode(',', array_fill(0, count($family_uids), '%s'));
+            $records = $wpdb->get_results($wpdb->prepare(
+                "SELECT tr.family_uid,tr.student_uid,tr.oracle_student_id FROM {$transportation} tr
+                 WHERE tr.study_year IN (%s,%s) AND (tr.is_active IS NULL OR tr.is_active=1)
+                   AND tr.family_uid IN ({$placeholders})",
+                array_merge(array($study_year, $alternate), $family_uids)
+            ), ARRAY_A);
+            foreach ((array) $records as $record) {
+                $uid = (string) ($record['student_uid'] ?: $record['oracle_student_id']);
+                if ($uid !== '') $result[$uid] = true;
+            }
+            return $result;
+        }
+
+        // Compatibility fallback for older Core installations without the mirror table.
+        if (function_exists('olama_core')) foreach ($rows as $row) {
+            foreach ((array) olama_core()->transportation()->get_family((string) $row['oracle_family_id'], $study_year) as $record) {
+                if (isset($record['is_active']) && $record['is_active'] !== null && (int) $record['is_active'] !== 1) continue;
+                $uid = (string) ($record['student_uid'] ?? ($record['oracle_student_id'] ?? ''));
+                if ($uid !== '') $result[$uid] = true;
+            }
+        }
+        return $result;
     }
 
     public static function save_area_students($id, $area_id, $student_uids)
@@ -256,7 +290,7 @@ class Olama_Transportation_Shared_Trips
         }
         $eligible = array();
         foreach ($candidate_data['students'] as $student) {
-            if (!$student['assigned_elsewhere']) {
+            if (!$student['assigned_elsewhere'] && $student['subscribed']) {
                 $eligible[$student['student_uid']] = $student;
             }
         }
@@ -264,6 +298,18 @@ class Olama_Transportation_Shared_Trips
         foreach ($student_uids as $uid) {
             if (!isset($eligible[$uid])) {
                 return new WP_Error('invalid_shared_trip_student', __('A selected student is unavailable or already belongs to another trip.', 'olama-transportation'), array('status' => 409));
+            }
+        }
+        // A family must travel together: selecting one sibling requires every
+        // transportation-subscribed sibling in this area to join this trip too.
+        $selected_lookup = array_fill_keys($student_uids, true);
+        $selected_families = array();
+        foreach ($student_uids as $uid) $selected_families[(string) $eligible[$uid]['family_uid']] = true;
+        foreach ($candidate_data['students'] as $student) {
+            if (!$student['subscribed']) continue;
+            $family = (string) $student['family_uid'];
+            if (isset($selected_families[$family]) && (!isset($selected_lookup[$student['student_uid']]) || $student['assigned_elsewhere'])) {
+                return new WP_Error('shared_trip_family_incomplete', __('All transportation students in the same family must be assigned to the same trip.', 'olama-transportation'), array('status' => 409));
             }
         }
         $table = Olama_Transportation_DB::table('shared_trip_students');
