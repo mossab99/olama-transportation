@@ -710,7 +710,7 @@ class Olama_Transportation_Shared_Trips
                     f.oracle_family_id,
                     sy.class_name grade_name,sy.section_name,f.father_mobile,f.mother_mobile,
                     COALESCE(NULLIF(f.family_address,''),NULLIF(f.address,''),'') oracle_address,
-                    a.name planning_area,t.id trip_id,t.name trip_name,COALESCE(NULLIF(driver.display_name,''),NULLIF(b.driver_source_name,''),'') driver_name,
+                    COALESCE(NULLIF(trip_area.name,''),family_area.name) planning_area,t.id trip_id,t.name trip_name,COALESCE(NULLIF(driver.display_name,''),NULLIF(b.driver_source_name,''),'') driver_name,
                     b.bus_number,t.bus_trip_number,sy.family_uid,
                     CASE WHEN fs.maps_url IS NOT NULL AND fs.maps_url<>'' THEN fs.maps_url WHEN fs.latitude IS NOT NULL AND fs.longitude IS NOT NULL THEN CONCAT('https://www.google.com/maps?q=',fs.latitude,',',fs.longitude) ELSE '' END maps_url,
                     CASE WHEN t.id IS NULL THEN 'without' ELSE 'with' END transport_status
@@ -720,10 +720,11 @@ class Olama_Transportation_Shared_Trips
              LEFT JOIN {$trips} t ON t.id=m.trip_id AND {$trip_join}
              LEFT JOIN {$buses} b ON b.id=t.bus_id
              LEFT JOIN {$wpdb->users} driver ON driver.ID=b.driver_user_id
-             LEFT JOIN {$wpdb->prefix}olama_transport_major_areas a ON a.id=m.major_area_id
              LEFT JOIN {$students} s ON s.student_uid=sy.student_uid
-             LEFT JOIN {$families} f ON f.family_uid=m.family_uid
+             LEFT JOIN {$families} f ON f.family_uid=sy.family_uid
              LEFT JOIN {$stops} fs ON fs.family_uid=sy.family_uid
+             LEFT JOIN {$wpdb->prefix}olama_transport_major_areas trip_area ON trip_area.id=m.major_area_id
+             LEFT JOIN {$wpdb->prefix}olama_transport_major_areas family_area ON family_area.id=fs.major_area_id
              WHERE {$where}
              ORDER BY f.oracle_family_id,student_name,sy.class_name,sy.section_name",
             ...array_merge($trip_params, $trip_params, $params)
