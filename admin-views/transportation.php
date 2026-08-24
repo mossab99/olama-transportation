@@ -78,6 +78,31 @@ $translate = array('Olama_School_Helpers', 'translate');
             </div>
         <?php endif; ?>
 
+        <?php if ($active_tab === 'family-move'): ?>
+            <div id="olama-family-move" class="olama-card olama-family-move" data-year-id="<?php echo intval($selected_year_id); ?>">
+                <header class="olama-family-move-hero">
+                    <div><span class="olama-section-kicker"><?php echo esc_html($translate('Transportation Operations')); ?></span><h2><?php echo esc_html($translate('Family Move')); ?></h2><p><?php echo esc_html($translate('Transfer one or more complete families between compatible trips.')); ?></p></div>
+                    <span class="dashicons dashicons-randomize" aria-hidden="true"></span>
+                </header>
+                <div class="olama-family-move-filters">
+                    <label><?php echo esc_html($translate('Academic Year')); ?><select id="family-move-year"><?php foreach ($years as $year): ?><option value="<?php echo intval($year->id); ?>" <?php selected($selected_year_id,$year->id); ?>><?php echo esc_html($year->year_name); ?></option><?php endforeach; ?></select></label>
+                    <label><?php echo esc_html($translate('Direction')); ?><select id="family-move-direction"><option value="morning"><?php echo esc_html($translate('Arrival / حضور')); ?></option><option value="afternoon"><?php echo esc_html($translate('Departure / عودة')); ?></option></select></label>
+                    <button type="button" class="button" id="family-move-refresh"><span class="dashicons dashicons-update" aria-hidden="true"></span><?php echo esc_html($translate('Refresh')); ?></button>
+                </div>
+                <div id="family-move-feedback" class="olama-operation-result" aria-live="polite"></div>
+                <div class="olama-family-move-columns">
+                    <section class="olama-family-move-pane" data-side="left"><div class="olama-family-move-pane-loading"><?php echo esc_html($translate('Loading trips…')); ?></div></section>
+                    <section class="olama-family-move-pane" data-side="right"><div class="olama-family-move-pane-loading"><?php echo esc_html($translate('Loading trips…')); ?></div></section>
+                </div>
+                <div class="olama-family-move-controls" aria-live="polite">
+                    <div class="olama-family-move-buttons"><button type="button" class="button family-move-direction-button" data-from="right" disabled>← <?php echo esc_html($translate('Move selected')); ?></button><button type="button" class="button family-move-direction-button" data-from="left" disabled><?php echo esc_html($translate('Move selected')); ?> →</button></div>
+                    <div id="family-move-preview" class="olama-family-move-preview"><p><?php echo esc_html($translate('Select families, then drag them to the other trip or use a move button.')); ?></p></div>
+                    <label class="olama-family-move-reason"><?php echo esc_html($translate('Reason (optional)')); ?><input type="text" id="family-move-reason" maxlength="250" placeholder="<?php echo esc_attr($translate('Administrative adjustment')); ?>"></label>
+                    <div class="olama-family-move-apply"><button type="button" class="button" id="family-move-cancel" disabled><?php echo esc_html($translate('Cancel')); ?></button><button type="button" class="button button-primary" id="family-move-apply" disabled><?php echo esc_html($translate('Apply family move')); ?></button><button type="button" class="button" id="family-move-undo" hidden><?php echo esc_html($translate('Undo last move')); ?></button></div>
+                </div>
+            </div>
+        <?php endif; ?>
+
         <?php if ($active_tab === 'reports'): ?>
             <div id="olama-school-reports" class="olama-card">
                 <div class="reports-block-grid"><button type="button" class="button reports-block is-active" data-report-type="school"><strong>School report</strong><span>Filter by grade, section, area, trip and transportation.</span></button><button type="button" class="button reports-block" data-report-type="walking"><strong>Walking students</strong><span>Students without transportation or trip assignment.</span></button><button type="button" class="button reports-block" data-report-type="family"><strong>Family search</strong><span>Search by family, student or grade.</span></button><button type="button" class="button reports-block" data-report-type="unassigned"><strong>Transportation not assigned</strong><span>Subscribed students not added to a trip.</span></button></div>

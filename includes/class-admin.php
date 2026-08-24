@@ -126,6 +126,7 @@ class Olama_Transportation_Admin
             'overview'    => Olama_School_Helpers::translate('Overview'),
             'buses'       => Olama_School_Helpers::translate('Buses'),
             'areas'       => Olama_School_Helpers::translate('Trips'),
+            'family-move' => Olama_School_Helpers::translate('Family Move'),
             'planning'    => Olama_School_Helpers::translate('Area Coverage'),
             'routes'      => Olama_School_Helpers::translate('Routes'),
             'import'      => Olama_School_Helpers::translate('Family Locations'),
@@ -377,7 +378,17 @@ class Olama_Transportation_Admin
             wp_enqueue_script('olama-companion-locations', OLAMA_TRANSPORTATION_URL . 'assets/js/companion-locations.js', array(), $this->asset_version($path), true);
             wp_localize_script('olama-companion-locations', 'olamaCompanionLocations', array('restUrl'=>esc_url_raw(rest_url('olama-transportation/v1/')),'restNonce'=>wp_create_nonce('wp_rest'),'year'=>$selected_year_id,'canManage'=>Olama_School_Permissions::can('olama_manage_transport_buses'),'i18n'=>array('saving'=>Olama_School_Helpers::translate('Saving…'),'saved'=>Olama_School_Helpers::translate('Saved.'),'failed'=>Olama_School_Helpers::translate('Save failed.'),'missing'=>Olama_School_Helpers::translate('Enter a valid location first.'),'noTrips'=>Olama_School_Helpers::translate('No attached trips.'))));
         }
-        if ($tab === 'areas') {
+        if ($tab === 'family-move') {
+            $this->enqueue_style('olama-leaflet', 'assets/vendor/leaflet/leaflet.css');
+            wp_enqueue_script('olama-leaflet', OLAMA_TRANSPORTATION_URL . 'assets/vendor/leaflet/leaflet.js', array(), $this->asset_version(OLAMA_TRANSPORTATION_PATH . 'assets/vendor/leaflet/leaflet.js'), true);
+            $path = OLAMA_TRANSPORTATION_PATH . 'assets/js/family-move.js';
+            wp_enqueue_script('olama-family-move', OLAMA_TRANSPORTATION_URL . 'assets/js/family-move.js', array('jquery','olama-leaflet'), $this->asset_version($path), true);
+            wp_localize_script('olama-family-move', 'olamaFamilyMove', array(
+                'restUrl'=>esc_url_raw(rest_url('olama-transportation/v1/')), 'restNonce'=>wp_create_nonce('wp_rest'),
+                'canManage'=>Olama_School_Permissions::can('olama_manage_transport_buses'), 'year'=>(int)$selected_year_id,
+                'tileUrl'=>'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', 'tileAttribution'=>'&copy; OpenStreetMap contributors',
+            ));
+        } elseif ($tab === 'areas') {
             $trip_companions = Olama_Transportation_Bus::get_available_companions();
             $this->enqueue_style('olama-leaflet', 'assets/vendor/leaflet/leaflet.css');
             wp_enqueue_script('olama-leaflet', OLAMA_TRANSPORTATION_URL . 'assets/vendor/leaflet/leaflet.js', array(), $this->asset_version(OLAMA_TRANSPORTATION_PATH . 'assets/vendor/leaflet/leaflet.js'), true);

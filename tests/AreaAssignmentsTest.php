@@ -223,6 +223,82 @@ class Olama_Transportation_Area_Assignments_Test extends WP_UnitTestCase
         $this->assertSame('school', reset($afternoon_queue)['node_type']);
     }
 
+    public function test_multiple_families_move_atomically_between_compatible_trips()
+    {
+        global $wpdb;
+        $source = $this->create_shared_trip('morning');
+        $destination = $this->create_shared_trip('morning');
+        $destination_bus = $this->create_bus(20);
+        $wpdb->update(Olama_Transportation_DB::table('shared_trips'), array('bus_id'=>$this->bus_id,'bus_trip_number'=>1), array('id'=>$source['id']));
+        $wpdb->update(Olama_Transportation_DB::table('shared_trips'), array('bus_id'=>$destination_bus,'bus_trip_number'=>1), array('id'=>$destination['id']));
+        Olama_Transportation_Shared_Trips::save_areas($source['id'], array($this->area_one));
+        Olama_Transportation_Shared_Trips::save_areas($destination['id'], array($this->area_one));
+        $first = $this->create_stop($this->area_one, 'core', 'MOVE-A');
+        $second = $this->create_stop($this->area_one, 'core', 'MOVE-B');
+        $this->add_shared_member($source['id'], $this->area_one, 101, $first['family_uid']);
+        $this->add_shared_member($source['id'], $this->area_one, 102, $first['family_uid']);
+        $this->add_shared_member($source['id'], $this->area_one, 103, $second['family_uid']);
+
+        $result = Olama_Transportation_Family_Move::move(array(
+            'source_trip_id'=>$source['id'], 'destination_trip_id'=>$destination['id'],
+            'family_uids'=>array($first['family_uid'], $second['family_uid']), 'reason'=>'Test move',
+        ));
+
+        $this->assertFalse(is_wp_error($result));
+        $this->assertSame(2, $result['moved_family_count']);
+        $this->assertSame(3, $result['moved_student_count']);
+        $this->assertSame(0, Olama_Transportation_Shared_Trips::get($source['id'])['student_count']);
+        $this->assertSame(3, Olama_Transportation_Shared_Trips::get($destination['id'])['student_count']);
+        $this->assertCount(2, $result['destination_trip']['families']);
+        $this->assertTrue($result['routes_need_recalculation']);
+    }
+
+    public function test_family_move_rejects_incompatible_area_without_partial_changes()
+    {
+        global $wpdb;
+        $source = $this->create_shared_trip('morning');
+        $destination = $this->create_shared_trip('morning');
+        $wpdb->update(Olama_Transportation_DB::table('shared_trips'), array('bus_id'=>$this->bus_id,'bus_trip_number'=>1), array('id'=>$destination['id']));
+        Olama_Transportation_Shared_Trips::save_areas($source['id'], array($this->area_one));
+        Olama_Transportation_Shared_Trips::save_areas($destination['id'], array($this->area_two));
+        $family = $this->create_stop($this->area_one, 'core', 'MOVE-AREA');
+        $this->add_shared_member($source['id'], $this->area_one, 201, $family['family_uid']);
+
+        $result = Olama_Transportation_Family_Move::move(array(
+            'source_trip_id'=>$source['id'], 'destination_trip_id'=>$destination['id'], 'family_uids'=>array($family['family_uid']),
+        ));
+
+        $this->assertWPError($result);
+        $this->assertSame('family_move_area_mismatch', $result->get_error_code());
+        $this->assertSame(1, Olama_Transportation_Shared_Trips::get($source['id'])['student_count']);
+        $this->assertSame(0, Olama_Transportation_Shared_Trips::get($destination['id'])['student_count']);
+    }
+
+    public function test_family_move_rechecks_destination_capacity_inside_transaction()
+    {
+        global $wpdb;
+        $source = $this->create_shared_trip('morning');
+        $destination = $this->create_shared_trip('morning', 2);
+        $small_bus = $this->create_bus(2);
+        $wpdb->update(Olama_Transportation_DB::table('shared_trips'), array('bus_id'=>$small_bus,'bus_trip_number'=>1), array('id'=>$destination['id']));
+        Olama_Transportation_Shared_Trips::save_areas($source['id'], array($this->area_one));
+        Olama_Transportation_Shared_Trips::save_areas($destination['id'], array($this->area_one));
+        $moving = $this->create_stop($this->area_one, 'core', 'MOVE-CAPACITY');
+        $existing = $this->create_stop($this->area_one, 'core', 'MOVE-EXISTING');
+        $this->add_shared_member($source['id'], $this->area_one, 301, $moving['family_uid']);
+        $this->add_shared_member($source['id'], $this->area_one, 302, $moving['family_uid']);
+        $this->add_shared_member($destination['id'], $this->area_one, 303, $existing['family_uid']);
+
+        $result = Olama_Transportation_Family_Move::move(array(
+            'source_trip_id'=>$source['id'], 'destination_trip_id'=>$destination['id'], 'family_uids'=>array($moving['family_uid']),
+        ));
+
+        $this->assertWPError($result);
+        $this->assertSame('family_move_trip_limit', $result->get_error_code());
+        $this->assertSame(2, Olama_Transportation_Shared_Trips::get($source['id'])['student_count']);
+        $this->assertSame(1, Olama_Transportation_Shared_Trips::get($destination['id'])['student_count']);
+    }
+
     public function test_published_shared_trip_can_return_to_draft_for_editing()
     {
         global $wpdb;

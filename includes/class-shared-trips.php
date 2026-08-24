@@ -436,7 +436,7 @@ class Olama_Transportation_Shared_Trips
         return self::get($trip['id']);
     }
 
-    public static function build_queue($id)
+    public static function build_queue($id, $manage_transaction = true)
     {
         global $wpdb;
         $trip = self::get($id);
@@ -481,16 +481,16 @@ class Olama_Transportation_Shared_Trips
         }
         if ($trip['direction'] === 'morning') $nodes[] = $school_node;
         $now = current_time('mysql', true);
-        $wpdb->query('START TRANSACTION');
+        if ($manage_transaction) $wpdb->query('START TRANSACTION');
         $wpdb->delete($table, array('trip_id' => $trip['id']));
         foreach ($nodes as $index => $node) {
             $node['trip_id'] = $trip['id']; $node['queue_position'] = $index + 1; $node['created_at'] = $now; $node['updated_at'] = $now;
             if (!$wpdb->insert($table, $node)) {
-                $wpdb->query('ROLLBACK');
+                if ($manage_transaction) $wpdb->query('ROLLBACK');
                 return new WP_Error('shared_trip_queue_failed', $wpdb->last_error ?: __('Could not build the family queue.', 'olama-transportation'), array('status' => 500));
             }
         }
-        $wpdb->query('COMMIT');
+        if ($manage_transaction) $wpdb->query('COMMIT');
         Olama_Transportation_Audit::record('shared_trip_queue_built', 'shared_trip', $trip['id'], null, array('node_count' => count($nodes)));
         return self::get($trip['id']);
     }

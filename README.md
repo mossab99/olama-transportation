@@ -19,6 +19,8 @@ The active relationship is:
 3. In **Area Planning**, select academic year and direction, then allocate each Planning Area to an active bus and valid direction-specific trip number.
 4. Review the server-confirmed capacity preview and save. The map displays effective area/bus-trip allocation and never determines membership.
 
+Use **Family Move** to transfer one or more complete families between compatible trips. Both trips must share the academic year, direction, and lifecycle status; the destination must cover the families' planning areas and remain within its planning and bus capacities. Published moves update live student assignments atomically, and affected route versions must be rebuilt before they can be optimized or republished.
+
 The effective capacity is positive `planning_capacity`, otherwise `passenger_capacity`. The preview is calculated on the server and is advisory; save always recalculates inside the transaction. A preview hash detects intervening demand/capacity changes and returns HTTP 409 with updated capacity. Demand counts active, direction-enabled transportation enrollment students. If the selected academic year has no active enrollment rows, the entire context uses academic-registration fallback and displays a warning; sources are never mixed. Multiple areas may share a bus trip, and their student demand is aggregated. Over-capacity saves return a conflict instructing the operator to create/use a smaller planning area and manually move families; areas are never split automatically.
 
 ## Core synchronization and ownership
