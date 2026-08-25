@@ -46,6 +46,7 @@ class Olama_Transportation_Reports_Test extends WP_UnitTestCase
         $this->assertSame(1, $morning['summary']['assigned']);
         $this->assertSame(2, $morning['summary']['unassigned']);
         $this->assertSame(1, $morning['diagnostics']['duplicate_subscription_records']);
+        $this->assertSame(array(array('family_number'=>'F1','duplicate_rows'=>1)), $morning['diagnostics']['duplicate_subscription_families']);
         $this->assertSame(1, $morning['diagnostics']['stale_assigned_students']);
         $this->assertSame(1, $morning['diagnostics']['missing_student_identity']);
         $this->assertSame(1, $morning['diagnostics']['missing_academic_registration']);

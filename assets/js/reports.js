@@ -96,7 +96,7 @@
         var summary=data.summary||{}, diagnostics=data.diagnostics||{};
         var assignment=data.population==='walking'?'':'<span><b>'+Number(summary.fully_assigned||summary.assigned||0)+'</b> assigned</span><span><b>'+Number(summary.partial||0)+'</b> partial</span><span><b>'+Number(summary.unassigned||0)+'</b> unassigned</span>';
         var warnings=[];
-        if(diagnostics.duplicate_subscription_records)warnings.push(diagnostics.duplicate_subscription_records+' '+tr('duplicate subscription rows collapsed'));
+        if(diagnostics.duplicate_subscription_records){var familyLabel=tr('Family #'),duplicateFamilies=(diagnostics.duplicate_subscription_families||[]).map(function(item){return item.family_number;}).filter(Boolean);var duplicateMessage=diagnostics.duplicate_subscription_records+' '+tr('duplicate subscription rows collapsed');if(duplicateFamilies.length)duplicateMessage+=' — '+duplicateFamilies.map(function(number){return familyLabel+(familyLabel.indexOf('#')===-1?' ':'')+number;}).join(', ');warnings.push(duplicateMessage);}
         if(diagnostics.missing_academic_registration)warnings.push(diagnostics.missing_academic_registration+' '+tr('subscribed students missing academic registration'));
         if(diagnostics.missing_student_identity)warnings.push(diagnostics.missing_student_identity+' '+tr('missing student identities'));
         if(diagnostics.stale_assigned_students)warnings.push(diagnostics.stale_assigned_students+' '+tr('assigned students are not actively subscribed'));

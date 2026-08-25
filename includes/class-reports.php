@@ -343,6 +343,7 @@ class Olama_Transportation_Reports
             'study_year'=>$study_year, 'active_subscription_students'=>count($subscribed),
             'active_subscription_records'=>0, 'registered_students'=>count($registered),
             'duplicate_subscription_records'=>0, 'missing_student_identity'=>0,
+            'duplicate_subscription_families'=>array(),
             'missing_academic_registration'=>0, 'missing_family_identity'=>0,
             'assignment_conflicts'=>0, 'stale_assigned_students'=>0,
         );
@@ -350,13 +351,26 @@ class Olama_Transportation_Reports
         foreach ($subscribed as $row) {
             $subscribed_keys[self::student_key($row)] = true;
             $diagnostics['active_subscription_records'] += (int)$row['source_record_count'];
-            $diagnostics['duplicate_subscription_records'] += max(0, (int)$row['source_record_count'] - 1);
+            $duplicate_count = max(0, (int)$row['source_record_count'] - 1);
+            $diagnostics['duplicate_subscription_records'] += $duplicate_count;
+            if ($duplicate_count > 0) {
+                $family_number = (string)($row['oracle_family_id'] ?? '');
+                if ($family_number === '') $family_number = (string)($row['family_uid'] ?? '');
+                if (!isset($diagnostics['duplicate_subscription_families'][$family_number])) {
+                    $diagnostics['duplicate_subscription_families'][$family_number] = array(
+                        'family_number'=>$family_number,
+                        'duplicate_rows'=>0,
+                    );
+                }
+                $diagnostics['duplicate_subscription_families'][$family_number]['duplicate_rows'] += $duplicate_count;
+            }
             foreach (array('missing_student_identity','missing_academic_registration','missing_family_identity') as $key) if (!empty($row[$key])) $diagnostics[$key]++;
         }
         foreach ($assignments as $key => $directions) {
             if (!isset($subscribed_keys[$key])) $diagnostics['stale_assigned_students']++;
             foreach ($directions as $assignment) $diagnostics['assignment_conflicts'] += (int)($assignment['conflict_count'] ?? 0);
         }
+        $diagnostics['duplicate_subscription_families'] = array_values($diagnostics['duplicate_subscription_families']);
         return $diagnostics;
     }
 
