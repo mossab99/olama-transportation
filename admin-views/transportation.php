@@ -464,6 +464,7 @@ $translate = array('Olama_Transportation_I18n', 'translate');
                     <thead>
                         <tr>
                             <th><?php echo esc_html($translate('School Bus Code')); ?></th>
+                            <th><?php echo esc_html($translate('Description')); ?></th>
                             <th><?php echo esc_html($translate('Bus Number')); ?></th>
                             <th><?php echo esc_html($translate('Driver License Number')); ?></th>
                             <th><?php echo esc_html($translate('Passenger Capacity')); ?></th>
@@ -480,6 +481,7 @@ $translate = array('Olama_Transportation_I18n', 'translate');
                             <?php foreach ($buses as $bus): ?>
                                 <tr>
                                     <td><strong><?php echo esc_html($bus->bus_number); ?></strong></td>
+                                    <td><?php echo $bus->description ? esc_html($bus->description) : '-'; ?></td>
                                     <td><?php echo $bus->government_number ? esc_html($bus->government_number) : '-'; ?></td>
                                     <td><?php echo $bus->driver_license_number ? esc_html($bus->driver_license_number) : '-'; ?></td>
                                     <td><?php echo intval($bus->passenger_capacity); ?><?php if (intval($bus->passenger_capacity) === 0 && intval($bus->planning_capacity) > 0): ?><br><small><?php echo esc_html($translate('Planning override')); ?>: <?php echo intval($bus->planning_capacity); ?></small><?php endif; ?></td>
@@ -510,7 +512,7 @@ $translate = array('Olama_Transportation_I18n', 'translate');
                                 </tr>
                             <?php endforeach; ?>
                         <?php else: ?>
-                            <tr><td colspan="10"><?php echo esc_html($translate('No data')); ?></td></tr>
+                            <tr><td colspan="11"><?php echo esc_html($translate('No data')); ?></td></tr>
                         <?php endif; ?>
                     </tbody>
                 </table>

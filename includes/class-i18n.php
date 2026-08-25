@@ -565,6 +565,7 @@ final class Olama_Transportation_I18n
             'Saved Geographic Groups' => 'المجموعات الجغرافية المحفوظة',
             'Saved.' => 'تم الحفظ.',
             'School Bus Code' => 'رمز باص المدرسة',
+            'Description' => 'الوصف',
             'Search by family number, name, phone, or student' => 'ابحث برقم العائلة أو الاسم أو الهاتف أو الطالب',
             'Search families' => 'البحث عن العائلات',
             'Select a configured trip, then create and optimize a version of its route. The trip remains the source of students and families.' => 'حدد رحلة مهيأة، ثم أنشئ إصداراً من مسارها وحسّنه. تبقى الرحلة مصدر الطلاب والعائلات.',
