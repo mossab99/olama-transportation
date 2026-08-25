@@ -267,7 +267,7 @@ class Olama_Transportation_REST
 
     public function refresh_buses()
     {
-        return $this->respond(Olama_Transportation_Bus::refresh_from_core());
+        return $this->respond(Olama_Transportation_Bus::sync_from_source());
     }
 
     public function refresh_areas()

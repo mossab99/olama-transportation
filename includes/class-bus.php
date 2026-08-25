@@ -7,6 +7,84 @@ if (!defined('ABSPATH')) {
 class Olama_Transportation_Bus
 {
     /**
+     * Ask the configured Olama Oracle Sync adapter for the current fleet,
+     * update the canonical Core mirror, and then refresh this plugin's local
+     * planning projection.
+     *
+     * Transportation does not own Oracle credentials or make raw Oracle
+     * connections. The installed synchronization adapter remains responsible
+     * for the authenticated Bridge request and Core remains the canonical
+     * master-data store.
+     */
+    public static function sync_from_source()
+    {
+        if (!current_user_can('olama_access_oracle_sync')) {
+            return new WP_Error(
+                'oracle_sync_forbidden',
+                __('You do not have permission to synchronize Oracle transportation data.', 'olama-transportation'),
+                array('status' => 403)
+            );
+        }
+
+        if (!class_exists('Olama_Oracle_Api_Client') || !function_exists('olama_core') || !method_exists(olama_core(), 'transport_master')) {
+            return new WP_Error(
+                'oracle_sync_unavailable',
+                __('Olama Oracle Sync is unavailable. Activate it before refreshing buses from the source.', 'olama-transportation'),
+                array('status' => 503)
+            );
+        }
+
+        $response = (new Olama_Oracle_Api_Client())->get_transportation_buses();
+        if (empty($response['success'])) {
+            return new WP_Error(
+                'oracle_bus_refresh_failed',
+                sprintf(
+                    /* translators: %s is the Oracle Sync error message. */
+                    __('Oracle bus synchronization failed: %s', 'olama-transportation'),
+                    sanitize_text_field((string) ($response['message'] ?? __('Unknown error', 'olama-transportation')))
+                ),
+                array('status' => 502)
+            );
+        }
+
+        $payload = isset($response['data']) && is_array($response['data']) ? $response['data'] : array();
+        $rows = isset($payload['buses']) && is_array($payload['buses']) ? $payload['buses'] : array();
+        if (!$rows) {
+            // An empty fleet is much more likely to be a Bridge/API regression
+            // than a legitimate master-data deletion. Do not deactivate every
+            // existing bus on an ambiguous response.
+            return new WP_Error(
+                'oracle_bus_refresh_empty',
+                __('Oracle Sync returned no buses. The existing Core fleet was left unchanged.', 'olama-transportation'),
+                array('status' => 502)
+            );
+        }
+
+        try {
+            $core_summary = olama_core()->transport_master()->replace_buses_from_source($rows);
+        } catch (Throwable $exception) {
+            return new WP_Error(
+                'core_bus_refresh_failed',
+                sprintf(
+                    /* translators: %s is the Core update error message. */
+                    __('Olama Core could not store the synchronized buses: %s', 'olama-transportation'),
+                    sanitize_text_field($exception->getMessage())
+                ),
+                array('status' => 500)
+            );
+        }
+
+        $projection_summary = self::refresh_from_core();
+        if (is_wp_error($projection_summary)) {
+            return $projection_summary;
+        }
+
+        $projection_summary['received'] = count($rows);
+        $projection_summary['core'] = $core_summary;
+        return $projection_summary;
+    }
+
+    /**
      * Refresh the local planning projection from Olama Core.
      *
      * Core owns all Oracle-derived fields. This table stores only the stable

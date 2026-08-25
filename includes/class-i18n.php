@@ -113,6 +113,7 @@ final class Olama_Transportation_I18n
             'Oracle credentials and synchronization are managed centrally by Olama Oracle Sync. Transportation never connects to Oracle directly.' => 'تتم إدارة بيانات اتصال Oracle والمزامنة مركزياً بواسطة Olama Oracle Sync، ولا تتصل وحدة المواصلات بـ Oracle مباشرة.',
             'Refresh Buses from Olama Core' => 'تحديث الباصات من Olama Core',
             'Refresh from Olama Core' => 'تحديث من Olama Core',
+            'Sync Buses from Oracle' => 'مزامنة الباصات من Oracle',
             'Route Optimizer' => 'محسّن المسارات',
             'Provider' => 'مزود الخدمة',
             'Manual only' => 'يدوي فقط',

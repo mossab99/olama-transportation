@@ -591,13 +591,15 @@
 
     $('#refresh-core-buses').on('click', function () {
         var $button = $(this).prop('disabled', true);
+        var $result = $('#bus-refresh-result').length ? $('#bus-refresh-result') : $('#settings-result');
+        $result.text('Synchronizing buses from Oracle...');
         rest('core/refresh-buses', {method: 'POST'})
             .then(function (result) {
-                $('#settings-result').text('Created: ' + result.created + ', updated: ' + result.updated + ', deactivated: ' + result.deactivated);
-                window.location.reload();
+                $result.text('Received: ' + result.received + ', created: ' + result.created + ', updated: ' + result.updated + ', deactivated: ' + result.deactivated + '. Reloading...');
+                window.setTimeout(function () { window.location.reload(); }, 750);
             })
             .catch(function (error) {
-                $('#settings-result').text(error.message);
+                $result.text(error.message);
                 $button.prop('disabled', false);
             });
     });
