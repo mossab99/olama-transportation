@@ -4,6 +4,7 @@
     var state = { filters: [] };
     var $ = function (selector) { return document.querySelector(selector); };
     var esc = function (value) { var node = document.createElement('div'); node.textContent = value == null ? '' : value; return node.innerHTML; };
+    var attrEsc = function (value) { return esc(value).replace(/"/g, '&quot;').replace(/'/g, '&#039;'); };
     var tr = function (text) {
         if (typeof window.olamaTransportationTranslate === 'function') return window.olamaTransportationTranslate(text);
         return olamaReports.language === 'ar' && olamaReports.i18n && olamaReports.i18n[text] ? olamaReports.i18n[text] : text;
@@ -76,6 +77,14 @@
     }
 
     function statusLabel(status) { var label={fully_assigned:'Assigned both directions',partial:'One direction only',assigned:'Assigned',unassigned:'Not assigned'}[status]; return label ? tr(label) : status || '—'; }
+    function reportCell(label, content, attributes) {
+        return '<td data-label="' + attrEsc(tr(label)) + '"' + (attributes ? ' ' + attributes : '') + '>' + content + '</td>';
+    }
+    function phoneCell(value) {
+        if (!value) return '—';
+        var phone=String(value),dial=phone.replace(/[^\d+]/g,'');
+        return dial ? '<a class="report-phone" href="tel:' + esc(dial) + '">' + esc(phone) + '</a>' : esc(phone);
+    }
     function tripCell(run) {
         if (!run || !run.trip_id) return '<span class="family-no-trip">—</span>';
         var warning = run.conflict_count ? '<small class="report-warning">'+esc(tr('Multiple assignments detected'))+'</small>' : '';
@@ -110,7 +119,7 @@
         api('reports/school-level',params(true)).then(function(data){
             var rows=sortRows(data.rows||[]), body=rows.map(function(row,index){
                 var map=row.maps_url?'<a target="_blank" rel="noopener" href="'+esc(row.maps_url)+'">Map</a>':'—', subscription=row.subscribed?'Subscribed':'Walking';
-                return '<tr><td>'+(index+1)+'</td><td>'+esc(row.oracle_family_id||'—')+'</td><td>'+esc(row.student_name)+'</td><td>'+esc(row.grade_name||'—')+'</td><td>'+esc(row.section_name||'—')+'</td><td>'+esc(row.planning_area||'—')+'</td><td>'+tripCell(row.arrival)+'</td><td>'+tripCell(row.departure)+'</td><td>'+esc(subscription)+'</td><td>'+esc(row.subscribed?statusLabel(row.assignment_status):'Not subscribed')+'</td><td dir="ltr">'+esc(row.father_mobile||'—')+'</td><td dir="ltr">'+esc(row.mother_mobile||'—')+'</td><td>'+esc(row.oracle_address||'—')+'<br>'+map+'</td></tr>';
+                return '<tr>'+reportCell('#',index+1)+reportCell('Family #',esc(row.oracle_family_id||'—'))+reportCell('Student',esc(row.student_name))+reportCell('Grade',esc(row.grade_name||'—'))+reportCell('Section',esc(row.section_name||'—'))+reportCell('Planning area',esc(row.planning_area||'—'))+reportCell('Arrival trip',tripCell(row.arrival))+reportCell('Departure trip',tripCell(row.departure))+reportCell('Subscription',esc(subscription))+reportCell('Assignment',esc(row.subscribed?statusLabel(row.assignment_status):'Not subscribed'))+reportCell('Father mobile',phoneCell(row.father_mobile),'dir="ltr"')+reportCell('Mother mobile',phoneCell(row.mother_mobile),'dir="ltr"')+reportCell('Address / map',esc(row.oracle_address||'—')+'<br>'+map)+'</tr>';
             }).join('');
             $('#school-report-results').innerHTML=summaryHtml(data)+'<div class="school-report-table-wrap"><table class="wp-list-table widefat striped school-report-table"><thead><tr><th>#</th><th>Family #</th><th>Student</th><th>Grade</th><th>Section</th><th>Planning area</th><th>Arrival trip</th><th>Departure trip</th><th>Subscription</th><th>Assignment</th><th>Father mobile</th><th>Mother mobile</th><th>Address / map</th></tr></thead><tbody>'+(body||'<tr><td colspan="13">No students match these filters.</td></tr>')+'</tbody></table></div>';
             $('#school-report-feedback').textContent='';
@@ -122,8 +131,8 @@
         $('#school-report-feedback').textContent='Searching families…';
         api('reports/families',{academic_year_id:$('#family-report-year').value,search:search}).then(function(data){
             var html=(data.items||[]).map(function(family){
-                var rows=(family.students||[]).map(function(row,index){return '<tr><td>'+(index+1)+'</td><td><strong>'+esc(row.student_name)+'</strong></td><td>'+esc(row.grade_name||'—')+'</td><td>'+esc(row.section_name||'—')+'</td><td>'+esc(row.subscribed?'Subscribed':'Walking')+'</td><td>'+tripCell(row.arrival)+'</td><td>'+tripCell(row.departure)+'</td></tr>';}).join('');
-                return '<section class="family-report-card"><h3>'+esc(family.family_name)+' <small>'+esc(tr('Family #'))+' '+esc(family.oracle_family_id)+'</small></h3><p class="family-report-contact"><span>'+esc(tr('Father:'))+' '+esc(family.father_mobile||'—')+'</span><span>'+esc(tr('Mother:'))+' '+esc(family.mother_mobile||'—')+'</span><span>'+esc(tr('Area:'))+' '+esc(family.planning_area||'—')+'</span></p><table><thead><tr><th>#</th><th>Student</th><th>Grade</th><th>Section</th><th>Subscription</th><th>Arrival</th><th>Departure</th></tr></thead><tbody>'+rows+'</tbody></table></section>';
+                var rows=(family.students||[]).map(function(row,index){return '<tr>'+reportCell('#',index+1)+reportCell('Student','<strong>'+esc(row.student_name)+'</strong>')+reportCell('Grade',esc(row.grade_name||'—'))+reportCell('Section',esc(row.section_name||'—'))+reportCell('Subscription',esc(row.subscribed?'Subscribed':'Walking'))+reportCell('Arrival',tripCell(row.arrival))+reportCell('Departure',tripCell(row.departure))+'</tr>';}).join('');
+                return '<section class="family-report-card"><h3>'+esc(family.family_name)+' <small>'+esc(tr('Family #'))+' '+esc(family.oracle_family_id)+'</small></h3><p class="family-report-contact"><span>'+esc(tr('Father:'))+' '+phoneCell(family.father_mobile)+'</span><span>'+esc(tr('Mother:'))+' '+phoneCell(family.mother_mobile)+'</span><span>'+esc(tr('Area:'))+' '+esc(family.planning_area||'—')+'</span></p><table><thead><tr><th>#</th><th>Student</th><th>Grade</th><th>Section</th><th>Subscription</th><th>Arrival</th><th>Departure</th></tr></thead><tbody>'+rows+'</tbody></table></section>';
             }).join('');
             $('#family-report-results').innerHTML=html||'<p>No matching families found.</p>'; $('#school-report-feedback').textContent='';
         }).catch(showError);
@@ -132,7 +141,7 @@
     function unassignedReport() {
         $('#school-report-feedback').textContent='Calculating assignment gaps…';
         api('reports/unassigned',{academic_year_id:$('#unassigned-report-year').value,scope:$('#unassigned-report-scope').value}).then(function(data){
-            var rows=data.rows||[],body=rows.map(function(row,index){return '<tr><td>'+(index+1)+'</td><td>'+esc(row.oracle_family_id||'—')+'</td><td>'+esc(row.student_name)+'</td><td>'+esc(row.grade_name||'—')+'</td><td>'+esc(row.section_name||'—')+'</td><td>'+esc(row.planning_area||'—')+'</td><td>'+tripCell(row.arrival)+'</td><td>'+tripCell(row.departure)+'</td><td>'+esc(statusLabel(row.assignment_status))+'</td><td dir="ltr">'+esc(row.father_mobile||'—')+'</td><td dir="ltr">'+esc(row.mother_mobile||'—')+'</td></tr>';}).join('');
+            var rows=data.rows||[],body=rows.map(function(row,index){return '<tr>'+reportCell('#',index+1)+reportCell('Family #',esc(row.oracle_family_id||'—'))+reportCell('Student',esc(row.student_name))+reportCell('Grade',esc(row.grade_name||'—'))+reportCell('Section',esc(row.section_name||'—'))+reportCell('Planning area',esc(row.planning_area||'—'))+reportCell('Arrival',tripCell(row.arrival))+reportCell('Departure',tripCell(row.departure))+reportCell('Status',esc(statusLabel(row.assignment_status)))+reportCell('Father mobile',phoneCell(row.father_mobile),'dir="ltr"')+reportCell('Mother mobile',phoneCell(row.mother_mobile),'dir="ltr"')+'</tr>';}).join('');
             $('#unassigned-report-results').innerHTML=summaryHtml({summary:data.summary,diagnostics:data.diagnostics,population:'transportation'})+'<div class="school-report-table-wrap"><table class="wp-list-table widefat striped school-report-table"><thead><tr><th>#</th><th>Family #</th><th>Student</th><th>Grade</th><th>Section</th><th>Planning area</th><th>Arrival</th><th>Departure</th><th>Status</th><th>Father mobile</th><th>Mother mobile</th></tr></thead><tbody>'+(body||'<tr><td colspan="11">No assignment gaps found.</td></tr>')+'</tbody></table></div>'; $('#school-report-feedback').textContent='';
         }).catch(showError);
     }
@@ -144,7 +153,7 @@
 
     document.addEventListener('DOMContentLoaded',function(){
         if(!$('#olama-school-reports'))return;$('#school-report-type').parentElement.style.display='none';
-        document.querySelectorAll('.reports-block').forEach(function(block){block.addEventListener('click',function(){$('#school-report-type').value=block.getAttribute('data-report-type');document.querySelectorAll('.reports-block').forEach(function(item){item.classList.toggle('is-active',item===block);});selectType();});});
+        document.querySelectorAll('.reports-block').forEach(function(block){block.addEventListener('click',function(){$('#school-report-type').value=block.getAttribute('data-report-type');document.querySelectorAll('.reports-block').forEach(function(item){var active=item===block;item.classList.toggle('is-active',active);item.setAttribute('aria-pressed',active?'true':'false');});selectType();});});
         $('#school-report-year').addEventListener('change',loadFilters);$('#school-report-direction').addEventListener('change',loadFilters);$('#school-report-grade').addEventListener('change',function(){updateSections(true);});
         ['#school-report-section','#school-report-area','#school-report-trip','#school-report-assignment'].forEach(function(selector){$(selector).addEventListener('change',renderSchool);});
         $('#school-report-print').addEventListener('click',function(){printHtml(tr('Transportation report'),$('#school-report-results').innerHTML);});$('#family-report-search-button').addEventListener('click',familyReport);$('#family-report-search').addEventListener('keydown',function(event){if(event.key==='Enter'){event.preventDefault();familyReport();}});$('#family-report-print').addEventListener('click',function(){printHtml(tr('Family transportation report'),$('#family-report-results').innerHTML);});
