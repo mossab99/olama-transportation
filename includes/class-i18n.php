@@ -114,6 +114,7 @@ final class Olama_Transportation_I18n
             'Refresh Buses from Olama Core' => 'تحديث الباصات من Olama Core',
             'Refresh from Olama Core' => 'تحديث من Olama Core',
             'Sync Buses from Oracle' => 'مزامنة الباصات من Oracle',
+            'Oracle Employee ID' => 'رقم موظف Oracle',
             'Route Optimizer' => 'محسّن المسارات',
             'Provider' => 'مزود الخدمة',
             'Manual only' => 'يدوي فقط',

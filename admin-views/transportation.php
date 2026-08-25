@@ -487,7 +487,13 @@ $translate = array('Olama_Transportation_I18n', 'translate');
                                     <td><?php echo intval($bus->afternoon_trip_count); ?></td>
                                     <td>
                                         <?php
-                                        echo $bus->driver_name ? esc_html($bus->driver_name) : '-';
+                                        if ($bus->driver_name) {
+                                            echo esc_html($bus->driver_name);
+                                        } elseif ($bus->driver_employee_id) {
+                                            echo esc_html($translate('Oracle Employee ID') . ': ' . $bus->driver_employee_id);
+                                        } else {
+                                            echo '-';
+                                        }
                                         ?>
                                     </td>
                                     <td><?php echo $bus->license_expiry_date ? esc_html(Olama_School_Helpers::format_date($bus->license_expiry_date)) : '-'; ?></td>

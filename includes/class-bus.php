@@ -60,6 +60,15 @@ class Olama_Transportation_Bus
             );
         }
 
+        $legacy_numbers = array();
+        foreach ($rows as $row) {
+            $operational_id = sanitize_text_field((string) ($row['bus_school_id'] ?? $row['BUS_SCHOOL_ID'] ?? ''));
+            $legacy_number = sanitize_text_field((string) ($row['bus_number'] ?? $row['bus_school_num'] ?? ''));
+            if ($operational_id !== '' && $legacy_number !== '' && $operational_id !== $legacy_number) {
+                $legacy_numbers[$operational_id] = $legacy_number;
+            }
+        }
+
         try {
             $core_summary = olama_core()->transport_master()->replace_buses_from_source($rows);
         } catch (Throwable $exception) {
@@ -74,7 +83,7 @@ class Olama_Transportation_Bus
             );
         }
 
-        $projection_summary = self::refresh_from_core();
+        $projection_summary = self::refresh_from_core($legacy_numbers);
         if (is_wp_error($projection_summary)) {
             return $projection_summary;
         }
@@ -90,7 +99,7 @@ class Olama_Transportation_Bus
      * Core owns all Oracle-derived fields. This table stores only the stable
      * local bus ID used by route plans plus Olama-only planning overrides.
      */
-    public static function refresh_from_core()
+    public static function refresh_from_core($legacy_numbers = array())
     {
         global $wpdb;
 
@@ -125,6 +134,12 @@ class Olama_Transportation_Bus
                 $existing = $wpdb->get_row($wpdb->prepare(
                     "SELECT id, planning_capacity FROM {$table} WHERE government_number = %s",
                     $government_number
+                ), ARRAY_A);
+            }
+            if (!$existing && $oracle_id !== '' && isset($legacy_numbers[$oracle_id])) {
+                $existing = $wpdb->get_row($wpdb->prepare(
+                    "SELECT id, planning_capacity FROM {$table} WHERE bus_number = %s ORDER BY id ASC LIMIT 1",
+                    sanitize_text_field((string) $legacy_numbers[$oracle_id])
                 ), ARRAY_A);
             }
             if (!$existing) {
@@ -191,11 +206,12 @@ class Olama_Transportation_Bus
         return $summary;
     }
 
-    public static function get_buses()
+    public static function get_buses($include_inactive = false)
     {
         global $wpdb;
         $table = "{$wpdb->prefix}olama_transport_buses";
         $employees = olama_core()->read_models()->table('employees');
+        $where = $include_inactive ? '' : "WHERE b.status = 'active'";
 
         return $wpdb->get_results(
             "SELECT b.*,
@@ -204,7 +220,9 @@ class Olama_Transportation_Bus
              FROM {$table} b
              LEFT JOIN {$employees} d ON b.driver_employee_id = d.employee_id
              LEFT JOIN {$employees} c ON b.companion_employee_id = c.employee_id
-             ORDER BY b.bus_number ASC"
+             {$where}
+             ORDER BY CASE WHEN b.bus_number REGEXP '^[0-9]+$' THEN 0 ELSE 1 END,
+                      CAST(b.bus_number AS UNSIGNED), b.bus_number ASC"
         );
     }
 

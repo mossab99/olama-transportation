@@ -68,6 +68,34 @@ class Olama_Transportation_Repository_Test extends WP_UnitTestCase
         $this->assertSame(3, (int) $bus->afternoon_trip_count);
     }
 
+    public function test_current_bus_list_excludes_retired_buses_and_uses_numeric_order()
+    {
+        global $wpdb;
+        $table = Olama_Transportation_DB::table('buses');
+        $now = current_time('mysql', true);
+        foreach (array(
+            array('uid' => 'TEST-LIST-10', 'number' => '10', 'status' => 'active'),
+            array('uid' => 'TEST-LIST-2', 'number' => '2', 'status' => 'active'),
+            array('uid' => 'TEST-LIST-13', 'number' => '13', 'status' => 'inactive'),
+        ) as $item) {
+            $wpdb->insert($table, array(
+                'core_bus_uid' => $item['uid'], 'bus_number' => $item['number'],
+                'passenger_capacity' => 20, 'status' => $item['status'],
+                'created_at' => $now, 'updated_at' => $now,
+            ));
+        }
+
+        $current = array_values(array_filter(Olama_Transportation_Bus::get_buses(), function ($bus) {
+            return strpos((string) $bus->core_bus_uid, 'TEST-LIST-') === 0;
+        }));
+        $history = array_values(array_filter(Olama_Transportation_Bus::get_buses(true), function ($bus) {
+            return strpos((string) $bus->core_bus_uid, 'TEST-LIST-') === 0;
+        }));
+
+        $this->assertSame(array('2', '10'), array_column($current, 'bus_number'));
+        $this->assertSame(array('2', '10', '13'), array_column($history, 'bus_number'));
+    }
+
     public function test_local_planning_capacity_is_allowed_when_core_capacity_is_zero()
     {
         global $wpdb;
