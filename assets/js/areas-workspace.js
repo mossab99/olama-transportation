@@ -219,7 +219,10 @@
     function deleteDraft(){if(!window.confirm('Delete this draft permanently? Its areas, students, and queue will be removed.'))return;api('areas-workspace/shared-trips/'+wizard.trip.id,{method:'DELETE'}).then(function(){document.getElementById('olama-trip-wizard-dialog').close();return load('Draft deleted.');}).catch(function(error){wizardFeedback(error.message,true);});}
 
     $(function(){
-        app=$('#olama-areas-workspace');if(!app.length)return;load();
+        app=$('#olama-areas-workspace');if(!app.length)return;
+        var params=new URLSearchParams(window.location.search),linkedTrip=Number(params.get('trip_id')||0),linkedDirection=params.get('direction');
+        if(linkedDirection==='morning'||linkedDirection==='afternoon')$('#areas-direction').val(linkedDirection);
+        load().then(function(){if(linkedTrip)openTrip(linkedTrip);});
         $('#areas-year,#areas-direction').on('change',load);
         $('#areas-refresh-core').on('click',function(){api('core/refresh-areas',{method:'POST',body:'{}'}).then(function(){return load('Areas refreshed from Olama Core.');}).catch(function(error){feedback(error.message,true);});});
         $('#olama-create-trip-plan').on('click',createTrip);

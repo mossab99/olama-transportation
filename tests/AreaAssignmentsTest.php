@@ -253,7 +253,7 @@ class Olama_Transportation_Area_Assignments_Test extends WP_UnitTestCase
         $this->assertTrue($result['routes_need_recalculation']);
     }
 
-    public function test_family_move_rejects_incompatible_area_without_partial_changes()
+    public function test_family_move_adds_a_different_planning_area_to_the_destination()
     {
         global $wpdb;
         $source = $this->create_shared_trip('morning');
@@ -268,10 +268,11 @@ class Olama_Transportation_Area_Assignments_Test extends WP_UnitTestCase
             'source_trip_id'=>$source['id'], 'destination_trip_id'=>$destination['id'], 'family_uids'=>array($family['family_uid']),
         ));
 
-        $this->assertWPError($result);
-        $this->assertSame('family_move_area_mismatch', $result->get_error_code());
-        $this->assertSame(1, Olama_Transportation_Shared_Trips::get($source['id'])['student_count']);
-        $this->assertSame(0, Olama_Transportation_Shared_Trips::get($destination['id'])['student_count']);
+        $this->assertFalse(is_wp_error($result));
+        $this->assertSame(array($this->area_one), $result['added_area_ids']);
+        $this->assertSame(0, Olama_Transportation_Shared_Trips::get($source['id'])['student_count']);
+        $this->assertSame(1, Olama_Transportation_Shared_Trips::get($destination['id'])['student_count']);
+        $this->assertContains($this->area_one, Olama_Transportation_Shared_Trips::get($destination['id'])['area_ids']);
     }
 
     public function test_family_move_rechecks_destination_capacity_inside_transaction()
@@ -279,8 +280,8 @@ class Olama_Transportation_Area_Assignments_Test extends WP_UnitTestCase
         global $wpdb;
         $source = $this->create_shared_trip('morning');
         $destination = $this->create_shared_trip('morning', 2);
-        $small_bus = $this->create_bus(2);
-        $wpdb->update(Olama_Transportation_DB::table('shared_trips'), array('bus_id'=>$small_bus,'bus_trip_number'=>1), array('id'=>$destination['id']));
+        $large_bus = $this->create_bus(20);
+        $wpdb->update(Olama_Transportation_DB::table('shared_trips'), array('bus_id'=>$large_bus,'bus_trip_number'=>1), array('id'=>$destination['id']));
         Olama_Transportation_Shared_Trips::save_areas($source['id'], array($this->area_one));
         Olama_Transportation_Shared_Trips::save_areas($destination['id'], array($this->area_one));
         $moving = $this->create_stop($this->area_one, 'core', 'MOVE-CAPACITY');
@@ -295,6 +296,32 @@ class Olama_Transportation_Area_Assignments_Test extends WP_UnitTestCase
 
         $this->assertWPError($result);
         $this->assertSame('family_move_trip_limit', $result->get_error_code());
+        $this->assertSame(2, Olama_Transportation_Shared_Trips::get($source['id'])['student_count']);
+        $this->assertSame(1, Olama_Transportation_Shared_Trips::get($destination['id'])['student_count']);
+    }
+
+    public function test_family_move_warns_when_destination_bus_capacity_would_be_exceeded()
+    {
+        global $wpdb;
+        $source = $this->create_shared_trip('morning', 20);
+        $destination = $this->create_shared_trip('morning', 20);
+        $small_bus = $this->create_bus(2);
+        $wpdb->update(Olama_Transportation_DB::table('shared_trips'), array('bus_id'=>$small_bus,'bus_trip_number'=>1), array('id'=>$destination['id']));
+        Olama_Transportation_Shared_Trips::save_areas($source['id'], array($this->area_one));
+        Olama_Transportation_Shared_Trips::save_areas($destination['id'], array($this->area_one));
+        $moving = $this->create_stop($this->area_one, 'core', 'MOVE-BUS-CAPACITY');
+        $existing = $this->create_stop($this->area_one, 'core', 'MOVE-BUS-EXISTING');
+        $this->add_shared_member($source['id'], $this->area_one, 311, $moving['family_uid']);
+        $this->add_shared_member($source['id'], $this->area_one, 312, $moving['family_uid']);
+        $this->add_shared_member($destination['id'], $this->area_one, 313, $existing['family_uid']);
+
+        $result = Olama_Transportation_Family_Move::move(array(
+            'source_trip_id'=>$source['id'], 'destination_trip_id'=>$destination['id'], 'family_uids'=>array($moving['family_uid']),
+        ));
+
+        $this->assertWPError($result);
+        $this->assertSame('family_move_bus_capacity', $result->get_error_code());
+        $this->assertStringContainsString('1 student', $result->get_error_message());
         $this->assertSame(2, Olama_Transportation_Shared_Trips::get($source['id'])['student_count']);
         $this->assertSame(1, Olama_Transportation_Shared_Trips::get($destination['id'])['student_count']);
     }

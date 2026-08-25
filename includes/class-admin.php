@@ -149,6 +149,7 @@ class Olama_Transportation_Admin
         $selected_year_id = isset($_GET['academic_year_id']) ? intval($_GET['academic_year_id']) : ($active_year ? $active_year->id : 0);
         $years = Olama_School_Academic::get_years();
         $summary = array();
+        $dashboard = array();
         $areas = array();
         $family_stops = array();
         $stops = array();
@@ -165,7 +166,10 @@ class Olama_Transportation_Admin
             $drivers = Olama_Transportation_Bus::get_available_drivers();
             $areas = Olama_Transportation_Repository::list_items('areas', array('per_page' => 500, 'status' => 'active'));
         }
-        if (in_array($active_tab, array('overview', 'areas', 'planning', 'import', 'dual', 'companions'), true) && $selected_year_id) {
+        if ($active_tab === 'overview' && $selected_year_id) {
+            $dashboard = Olama_Transportation_Dashboard::get($selected_year_id);
+        }
+        if (in_array($active_tab, array('areas', 'planning', 'import', 'dual', 'companions'), true) && $selected_year_id) {
             $summary = Olama_Transportation_Planning::report_summary($selected_year_id);
             $areas = Olama_Transportation_Repository::list_items('areas', array('per_page' => 500));
             $family_stops = Olama_Transportation_Repository::list_items('family-stops', array('per_page' => 100));
@@ -276,7 +280,10 @@ class Olama_Transportation_Admin
             $dual_active_year = Olama_School_Academic::get_active_year();
             $dual_year_id = $dual_active_year ? absint($dual_active_year->id) : 0;
         }
-        if ($tab === 'planning') {
+        if ($tab === 'overview') {
+            $path = OLAMA_TRANSPORTATION_PATH . 'assets/js/dashboard.js';
+            wp_enqueue_script('olama-transportation-dashboard', OLAMA_TRANSPORTATION_URL . 'assets/js/dashboard.js', array('jquery'), $this->asset_version($path), true);
+        } elseif ($tab === 'planning') {
             $this->enqueue_style('olama-leaflet', 'assets/vendor/leaflet/leaflet.css');
             $this->enqueue_style('olama-geographic-planner', 'assets/css/geographic-planner.css', array('olama-leaflet'));
             wp_enqueue_script('olama-leaflet', OLAMA_TRANSPORTATION_URL . 'assets/vendor/leaflet/leaflet.js', array(), $this->asset_version(OLAMA_TRANSPORTATION_PATH . 'assets/vendor/leaflet/leaflet.js'), true);

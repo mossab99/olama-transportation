@@ -16,12 +16,14 @@ The active relationship is:
 
 ## Planning workflow
 
+The **Overview** is an operational control center built from the canonical subscription report, shared trips, buses, route versions, family-location quality, and audit history. It prioritizes capacity and assignment exceptions, compares arrival and departure coverage, exposes estimated route duration only after optimization, and links each issue to the workspace where it can be resolved.
+
 1. In **Family Locations**, select a Planning Area from the active Oracle Area value set per family or use the atomic bulk action. The assignment is stored locally, so an administrator can correct a family's Planning Area without changing its read-only Oracle Area. This works even before coordinates exist: Transportation creates a nullable location placeholder without inventing a map point.
 2. Add or update the family pickup coordinates when available; this preserves the Planning Area and its audit metadata.
 3. In **Area Planning**, select academic year and direction, then allocate each Planning Area to an active bus and valid direction-specific trip number.
 4. Review the server-confirmed capacity preview and save. The map displays effective area/bus-trip allocation and never determines membership.
 
-Use **Family Move** to transfer one or more complete families between compatible trips. Both trips must share the academic year, direction, and lifecycle status; the destination must cover the families' planning areas and remain within its planning and bus capacities. Published moves update live student assignments atomically, and affected route versions must be rebuilt before they can be optimized or republished.
+Use **Family Move** to transfer one or more complete families between compatible trips. Both trips must share the academic year, direction, and lifecycle status. When a family's planning area differs from the destination mapping, the workspace displays a warning and the area is added to the destination trip automatically when the move is applied. Planning and bus capacities remain enforced. Published moves update live student assignments atomically, and affected route versions must be rebuilt before they can be optimized or republished.
 
 The effective capacity is positive `planning_capacity`, otherwise `passenger_capacity`. The preview is calculated on the server and is advisory; save always recalculates inside the transaction. A preview hash detects intervening demand/capacity changes and returns HTTP 409 with updated capacity. Demand counts active, direction-enabled transportation enrollment students. If the selected academic year has no active enrollment rows, the entire context uses academic-registration fallback and displays a warning; sources are never mixed. Multiple areas may share a bus trip, and their student demand is aggregated. Over-capacity saves return a conflict instructing the operator to create/use a smaller planning area and manually move families; areas are never split automatically.
 

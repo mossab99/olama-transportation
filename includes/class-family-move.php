@@ -166,24 +166,26 @@ class Olama_Transportation_Family_Move
             return self::rollback_error('family_move_family_conflict', __('A selected family already has students in another trip.', 'olama-transportation'), 409);
         }
 
-        $destination_area_ids = array_map('intval', $wpdb->get_col($wpdb->prepare("SELECT major_area_id FROM {$areas_table} WHERE trip_id=%d", $destination_id)));
         $moving_area_ids = array_values(array_unique(array_map('intval', array_column($moving_rows, 'major_area_id'))));
-        $missing_areas = array_values(array_diff($moving_area_ids, $destination_area_ids));
-        if ($missing_areas) {
-            return self::rollback_error('family_move_area_mismatch', __('The destination trip does not cover every planning area used by the selected families.', 'olama-transportation'), 409, array('missing_area_ids' => $missing_areas));
-        }
+        $destination_area_ids = array_map('intval', $wpdb->get_col($wpdb->prepare("SELECT major_area_id FROM {$areas_table} WHERE trip_id=%d FOR UPDATE", $destination_id)));
+        $added_area_ids = array_values(array_filter(array_diff($moving_area_ids, $destination_area_ids)));
 
         $destination_count = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(DISTINCT student_uid) FROM {$members_table} WHERE trip_id=%d", $destination_id));
         $moving_count = count(array_unique(array_column($moving_rows, 'student_uid')));
         $after_count = $destination_count + $moving_count;
-        if ($after_count > (int) $destination['planning_limit']) {
-            return self::rollback_error('family_move_trip_limit', sprintf(__('The move would exceed the destination planning limit by %d students.', 'olama-transportation'), $after_count - (int) $destination['planning_limit']), 409);
-        }
         if ($after_count > (int) $destination['bus_capacity']) {
             return self::rollback_error('family_move_bus_capacity', sprintf(__('The move would exceed the destination bus capacity by %d students.', 'olama-transportation'), $after_count - (int) $destination['bus_capacity']), 409);
         }
+        if ($after_count > (int) $destination['planning_limit']) {
+            return self::rollback_error('family_move_trip_limit', sprintf(__('The move would exceed the destination planning limit by %d students.', 'olama-transportation'), $after_count - (int) $destination['planning_limit']), 409);
+        }
 
         $now = current_time('mysql', true);
+        foreach ($added_area_ids as $area_id) {
+            if (!$wpdb->insert($areas_table, array('trip_id'=>$destination_id, 'major_area_id'=>$area_id, 'created_at'=>$now))) {
+                return self::rollback_error('family_move_save_failed', $wpdb->last_error ?: __('Could not add the family planning area to the destination trip.', 'olama-transportation'), 500);
+            }
+        }
         foreach ($moving_rows as $row) {
             unset($row['id']);
             $row['trip_id'] = $destination_id;
@@ -236,10 +238,10 @@ class Olama_Transportation_Family_Move
         }
         Olama_Transportation_Audit::record('families_moved', 'shared_trip', $destination_id, array(
             'source_trip_id'=>$source_id, 'destination_trip_id'=>$destination_id,
-            'family_uids'=>$family_uids, 'student_count'=>$moving_count,
+            'family_uids'=>$family_uids, 'student_count'=>$moving_count, 'added_area_ids'=>array(),
         ), array(
             'source_trip_id'=>$source_id, 'destination_trip_id'=>$destination_id,
-            'family_uids'=>$family_uids, 'student_count'=>$moving_count, 'reason'=>$reason,
+            'family_uids'=>$family_uids, 'student_count'=>$moving_count, 'added_area_ids'=>$added_area_ids, 'reason'=>$reason,
         ));
         $wpdb->query('COMMIT');
 
@@ -247,6 +249,7 @@ class Olama_Transportation_Family_Move
             'moved_family_uids' => $family_uids,
             'moved_family_count' => count($family_uids),
             'moved_student_count' => $moving_count,
+            'added_area_ids' => $added_area_ids,
             'source_trip' => self::trip($source_id),
             'destination_trip' => self::trip($destination_id),
             'routes_need_recalculation' => true,

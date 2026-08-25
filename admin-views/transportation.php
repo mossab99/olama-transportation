@@ -20,32 +20,7 @@ $translate = array('Olama_Transportation_I18n', 'translate');
 
     <div class="olama-tab-content">
         <?php if ($active_tab === 'overview'): ?>
-            <div class="olama-transportation-toolbar">
-                <h2><?php echo esc_html($translate('Semester Overview')); ?></h2>
-                <label><?php echo esc_html($translate('Academic Year')); ?>
-                    <select class="olama-year-navigation">
-                        <?php foreach ($years as $year): ?>
-                            <option value="<?php echo intval($year->id); ?>" <?php selected($selected_year_id, $year->id); ?>><?php echo esc_html($year->year_name); ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </label>
-            </div>
-            <div class="olama-metric-grid">
-                <div class="olama-metric"><strong><?php echo intval($summary['enrolled_students'] ?? 0); ?></strong><span><?php echo esc_html($translate('Enrolled Students')); ?></span></div>
-                <div class="olama-metric"><strong><?php echo intval($summary['verified_family_stops'] ?? 0); ?></strong><span><?php echo esc_html($translate('Approved Family Stops')); ?></span></div>
-                <div class="olama-metric"><strong><?php echo intval($summary['stops_needing_review'] ?? 0); ?></strong><span><?php echo esc_html($translate('Stops Needing Review')); ?></span></div>
-                <div class="olama-metric"><strong><?php echo intval($summary['published_routes'] ?? 0); ?></strong><span><?php echo esc_html($translate('Published Routes')); ?></span></div>
-            </div>
-            <div class="olama-card">
-                <h2><?php echo esc_html($translate('Readiness Checklist')); ?></h2>
-                <ol class="olama-readiness-list">
-                    <li><?php echo esc_html($translate('Synchronize Oracle master data into Olama Core, then refresh the Transportation planning view.')); ?></li>
-                    <li><?php echo esc_html($translate('Import and approve WhatsApp family locations.')); ?></li>
-                    <li><?php echo esc_html($translate('Create student-level morning and afternoon enrollments.')); ?></li>
-                    <li><?php echo esc_html($translate('Map family stops to major areas and allocate buses.')); ?></li>
-                    <li><?php echo esc_html($translate('Create, optimize, review, and publish immutable route versions.')); ?></li>
-                </ol>
-            </div>
+            <?php include OLAMA_TRANSPORTATION_PATH . 'admin-views/dashboard.php'; ?>
         <?php endif; ?>
 
         <?php if ($active_tab === 'areas'): ?>
@@ -95,10 +70,9 @@ $translate = array('Olama_Transportation_I18n', 'translate');
                     <section class="olama-family-move-pane" data-side="right"><div class="olama-family-move-pane-loading"><?php echo esc_html($translate('Loading trips…')); ?></div></section>
                 </div>
                 <div class="olama-family-move-controls" aria-live="polite">
-                    <div class="olama-family-move-buttons"><button type="button" class="button family-move-direction-button" data-from="right" disabled>← <?php echo esc_html($translate('Move selected')); ?></button><button type="button" class="button family-move-direction-button" data-from="left" disabled><?php echo esc_html($translate('Move selected')); ?> →</button></div>
                     <div id="family-move-preview" class="olama-family-move-preview"><p><?php echo esc_html($translate('Select families, then drag them to the other trip or use a move button.')); ?></p></div>
                     <label class="olama-family-move-reason"><?php echo esc_html($translate('Reason (optional)')); ?><input type="text" id="family-move-reason" maxlength="250" placeholder="<?php echo esc_attr($translate('Administrative adjustment')); ?>"></label>
-                    <div class="olama-family-move-apply"><button type="button" class="button" id="family-move-cancel" disabled><?php echo esc_html($translate('Cancel')); ?></button><button type="button" class="button button-primary" id="family-move-apply" disabled><?php echo esc_html($translate('Apply family move')); ?></button><button type="button" class="button" id="family-move-undo" hidden><?php echo esc_html($translate('Undo last move')); ?></button></div>
+                    <div class="olama-family-move-apply"><button type="button" class="button" id="family-move-cancel" disabled><?php echo esc_html($translate('Cancel')); ?></button><button type="button" class="button button-primary" id="family-move-apply" disabled><?php echo esc_html($translate('Apply family move')); ?></button></div>
                 </div>
             </div>
         <?php endif; ?>

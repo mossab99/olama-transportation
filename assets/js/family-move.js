@@ -116,17 +116,20 @@
             return;
         }
         var used = Number(trip.student_count || 0), capacity = Number(trip.bus_capacity || 0), remaining = capacity ? capacity - used : 0;
+        var busExcess = capacity ? Math.max(0, used - capacity) : 0;
         var summary = '<div class="olama-family-move-trip-summary">' +
             '<div><span>Families</span><strong>' + Number(trip.family_count || 0) + '</strong></div>' +
             '<div><span>Students</span><strong>' + used + '</strong></div>' +
             '<div><span>Bus capacity</span><strong>' + (capacity || '—') + '</strong></div>' +
             '<div class="' + (remaining <= 0 ? 'is-full' : '') + '"><span>Remaining</span><strong>' + (capacity ? remaining : '—') + '</strong></div></div>';
+        var capacityWarning = busExcess ? '<div class="olama-family-move-capacity-warning" role="alert"><span class="dashicons dashicons-warning" aria-hidden="true"></span><strong>Bus capacity exceeded:</strong> this trip is ' + busExcess + ' student' + (busExcess === 1 ? '' : 's') + ' over its ' + capacity + '-seat limit.</div>' : '';
         var map = '<div class="olama-family-move-map-head"><div><strong>Trip map</strong><small> Academy and family stops</small></div><button type="button" class="button olama-family-move-fit" data-side="' + side + '">Fit route</button></div><div class="olama-family-move-map" id="family-move-map-' + side + '" aria-label="' + esc(trip.name) + ' map"></div>';
         var readonly = config.canManage ? '' : '<div class="olama-family-move-readonly">You can review this workspace, but you do not have permission to move families.</div>';
         var queue = '<div class="olama-family-move-queue-head"><strong>Family queue</strong><small>' + trip.family_count + ' families</small></div>' +
             '<div class="olama-family-move-queue-toolbar"><input type="search" class="olama-family-move-search" data-side="' + side + '" placeholder="Search family or student"><button type="button" class="button olama-family-move-clear" data-side="' + side + '">Clear selection</button></div>' +
-            '<ul class="olama-family-move-family-list" data-side="' + side + '"></ul><aside class="olama-family-move-detail" data-side="' + side + '"><p>Select a family circle to view details.</p></aside>';
-        pane(side).html(select + summary + map + readonly + queue);
+            '<ul class="olama-family-move-family-list" data-side="' + side + '"></ul><aside class="olama-family-move-detail" data-side="' + side + '"><p>Select a family circle to view details.</p></aside>' +
+            '<div class="olama-family-move-pane-actions"><button type="button" class="button button-primary family-move-direction-button" data-from="' + side + '" disabled>' + (side === 'left' ? 'Move selected →' : '← Move selected') + '</button><button type="button" class="button family-move-undo"' + (undoMove ? '' : ' hidden') + '>Undo last move</button></div>';
+        pane(side).html(select + summary + capacityWarning + map + readonly + queue);
         renderFamilyList(side);
         setTimeout(function () { renderMap(side); }, 0);
         updateControls();
@@ -224,18 +227,26 @@
         if (!source || !destination || !families.length) return {valid:false,message:'Select at least one family and two trips.'};
         if (source.status !== destination.status) return {valid:false,message:'Both trips must have the same draft or published status.'};
         if (!destination.bus_id || !Number(destination.bus_capacity)) return {valid:false,message:'The destination needs an assigned bus with usable capacity.'};
-        var areaLookup = {}; (destination.area_ids || []).forEach(function (id) { areaLookup[Number(id)] = true; });
-        var missingArea = families.some(function (family) { return (family.area_ids || []).some(function (id) { return !areaLookup[Number(id)]; }); });
-        if (missingArea) return {valid:false,message:'The destination does not cover every selected family’s planning area.'};
+        var destinationAreas = {}; (destination.area_ids || []).forEach(function (id) { destinationAreas[Number(id)] = true; });
+        var missingAreaNames = [];
+        families.forEach(function (family) {
+            (family.area_ids || []).forEach(function (id, index) {
+                var name = (family.area_names || [])[index] || ('Area #' + id);
+                if (!destinationAreas[Number(id)] && missingAreaNames.indexOf(name) === -1) missingAreaNames.push(name);
+            });
+        });
         var students = families.reduce(function (total, family) { return total + Number(family.student_count || 0); }, 0);
         var after = Number(destination.student_count || 0) + students;
-        if (after > Number(destination.planning_limit || 0)) return {valid:false,message:'The move would exceed the destination planning limit by ' + (after - Number(destination.planning_limit)) + ' students.',families:families,students:students,after:after};
-        if (after > Number(destination.bus_capacity || 0)) return {valid:false,message:'The move would exceed the destination bus capacity by ' + (after - Number(destination.bus_capacity)) + ' students.',families:families,students:students,after:after};
-        return {valid:true,message:'Ready to move',families:families,students:students,after:after,remaining:Number(destination.bus_capacity)-after};
+        if (after > Number(destination.bus_capacity || 0)) return {valid:false,message:'The move would exceed the destination bus capacity by ' + (after - Number(destination.bus_capacity)) + ' students.',families:families,students:students,after:after,missingAreaNames:missingAreaNames};
+        if (after > Number(destination.planning_limit || 0)) return {valid:false,message:'The move would exceed the destination planning limit by ' + (after - Number(destination.planning_limit)) + ' students.',families:families,students:students,after:after,missingAreaNames:missingAreaNames};
+        return {valid:true,message:'Ready to move',families:families,students:students,after:after,remaining:Number(destination.bus_capacity)-after,missingAreaNames:missingAreaNames};
     }
 
     function stageMove(fromSide) {
         var check = validation(fromSide), toSide = other(fromSide);
+        if (check.missingAreaNames && check.missingAreaNames.length) {
+            window.alert('Planning area warning\n\nThe selected families use planning areas that are different from the destination trip:\n\u2022 ' + check.missingAreaNames.join('\n\u2022 ') + '\n\nThe move is allowed. These planning areas will be added to the destination trip when you apply the move.');
+        }
         pending = {fromSide:fromSide,toSide:toSide,sourceTripId:sides[fromSide].tripId,destinationTripId:sides[toSide].tripId,familyUids:selectedFamilies(fromSide).map(function (family) { return family.family_uid; }),check:check};
         var names = selectedFamilies(fromSide).map(function (family) { return '#' + (family.oracle_family_id || family.family_name); }).join(', ');
         $('#family-move-preview').html('<p><strong>' + pending.familyUids.length + ' ' + (pending.familyUids.length === 1 ? 'family' : 'families') + ' · ' + Number(check.students || 0) + ' students</strong><br>' + esc(names) + '<br><span class="' + (check.valid ? 'is-valid' : 'is-invalid') + '">' + esc(check.valid ? 'Destination after move: ' + check.after + '/' + sides[toSide].trip.bus_capacity + ' seats · ' + check.remaining + ' remaining. Routes will need recalculation.' : check.message) + '</span></p>');
@@ -258,17 +269,17 @@
 
     function applyMove(payload, isUndo) {
         feedback(isUndo ? 'Undoing family move…' : 'Applying family move…');
-        $('#family-move-apply,#family-move-undo').prop('disabled', true);
+        $('#family-move-apply,.family-move-undo').prop('disabled', true);
         return api('family-move', {method:'POST',body:JSON.stringify(payload)}).then(function (response) {
             undoMove = isUndo ? null : {source_trip_id:payload.destination_trip_id,destination_trip_id:payload.source_trip_id,family_uids:payload.family_uids,reason:'Undo family move'};
             cancelPending();
             $('#family-move-reason').val('');
-            $('#family-move-undo').prop('hidden', !undoMove).prop('disabled', false);
+            $('.family-move-undo').prop('hidden', !undoMove).prop('disabled', false);
             return loadContext((isUndo ? 'Family move undone. ' : response.moved_family_count + ' families and ' + response.moved_student_count + ' students moved. ') + 'Affected routes need recalculation.');
         }).catch(function (error) {
             feedback(error.message, true);
             $('#family-move-apply').prop('disabled', !(pending && pending.check.valid));
-            $('#family-move-undo').prop('disabled', false);
+            $('.family-move-undo').prop('disabled', false);
         });
     }
 
@@ -285,7 +296,7 @@
     $(function () {
         if (!$('#olama-family-move').length) return;
         loadContext();
-        $('#family-move-year,#family-move-direction').on('change', function () { sides.left.tripId=0;sides.right.tripId=0;undoMove=null;$('#family-move-undo').prop('hidden',true);loadContext(); });
+        $('#family-move-year,#family-move-direction').on('change', function () { sides.left.tripId=0;sides.right.tripId=0;undoMove=null;$('.family-move-undo').prop('hidden',true);loadContext(); });
         $('#family-move-refresh').on('click', function () { loadContext('Trips refreshed.'); });
         $(document).on('change','.family-move-trip-select',function(){var side=$(this).data('side');cancelPending();loadTrip(side,this.value).then(function(){renderPane(other(side));}).catch(function(error){feedback(error.message,true);});});
         $(document).on('input','.olama-family-move-search',function(){var side=$(this).data('side');sides[side].search=this.value;renderFamilyList(side);});
@@ -300,6 +311,6 @@
         $(document).on('drop','.olama-family-move-pane',function(event){event.preventDefault();var target=$(this).data('side'),from=event.originalEvent.dataTransfer.getData('text/plain');$('.olama-family-move-pane').removeClass('is-drop-target is-invalid-target');if(from&&from!==target)stageMove(from);});
         $('#family-move-cancel').on('click',cancelPending);
         $('#family-move-apply').on('click',applyPending);
-        $('#family-move-undo').on('click',function(){if(undoMove)applyMove(undoMove,true);});
+        $(document).on('click','.family-move-undo',function(){if(undoMove)applyMove(undoMove,true);});
     });
 })(jQuery);
