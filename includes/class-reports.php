@@ -325,6 +325,10 @@ class Olama_Transportation_Reports
             $status = $row['assignment_status'] ?? 'unassigned';
             if (isset($counts[$status])) $counts[$status]++;
         }
+        $counts['filtered_subscription_records'] = $population === 'transportation'
+            ? array_sum(array_map(static function ($row) { return (int)($row['source_record_count'] ?? 0); }, $rows))
+            : 0;
+        $counts['filtered_duplicate_subscription_records'] = max(0, $counts['filtered_subscription_records'] - $counts['filtered_students']);
         $counts['subscribed_students'] = count($context['subscribed']);
         $counts['registered_students'] = count($context['registered']);
         $counts['walking_students'] = count($context['walking']);
@@ -424,7 +428,10 @@ class Olama_Transportation_Reports
     private static function is_kg_grade($grade)
     {
         $grade = function_exists('mb_strtolower') ? mb_strtolower(trim((string)$grade), 'UTF-8') : strtolower(trim((string)$grade));
-        return in_array(preg_replace('/\s+/u', ' ', $grade), array('kg1','kg 1','kg-1','kg2','kg 2','kg-2','بستان','تمهيدي'), true);
+        $grade = preg_replace('/\s+/u', ' ', $grade);
+        return strpos($grade, 'بستان') !== false
+            || strpos($grade, 'تمهيدي') !== false
+            || preg_match('/(?:^|[^a-z0-9])kg\s*-?\s*[12](?:[^a-z0-9]|$)/i', $grade) === 1;
     }
 
     private static function compare_students($a, $b)

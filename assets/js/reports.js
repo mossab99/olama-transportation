@@ -97,7 +97,8 @@
         if(diagnostics.missing_student_identity)warnings.push(diagnostics.missing_student_identity+' missing student identities');
         if(diagnostics.stale_assigned_students)warnings.push(diagnostics.stale_assigned_students+' assigned students are not actively subscribed');
         if(diagnostics.assignment_conflicts)warnings.push(diagnostics.assignment_conflicts+' duplicate direction assignments');
-        return '<div class="school-report-summary"><span><b>'+Number(summary.filtered_students||0)+'</b> shown</span><span><b>'+Number(summary.subscribed_students||0)+'</b> subscribed total</span><span><b>'+Number(summary.walking_students||0)+'</b> walking total</span>'+assignment+'</div>'+(warnings.length?'<div class="report-diagnostics"><strong>Data checks:</strong> '+esc(warnings.join(' · '))+'</div>':'');
+        var sourceRows=data.population==='walking'?'':'<span><b>'+Number(summary.filtered_subscription_records||0)+'</b> synchronized rows</span>';
+        return '<div class="school-report-summary"><span><b>'+Number(summary.filtered_students||0)+'</b> distinct students shown</span>'+sourceRows+'<span><b>'+Number(summary.subscribed_students||0)+'</b> school-wide subscribed</span><span><b>'+Number(summary.walking_students||0)+'</b> school-wide walking</span>'+assignment+'</div>'+(warnings.length?'<div class="report-diagnostics"><strong>Data checks:</strong> '+esc(warnings.join(' · '))+'</div>':'');
     }
 
     function renderSchool() {

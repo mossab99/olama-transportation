@@ -33,6 +33,8 @@ Reports keep subscription, academic registration, and trip assignment as separat
 
 Direction-specific reports classify each subscribed student as assigned or unassigned for that direction. The combined report classifies students as assigned in both directions, assigned in one direction, or not assigned. Assignment-gap scopes distinguish a missing arrival, missing departure, either missing direction, and no trip in either direction. Report diagnostics expose collapsed duplicate subscription rows, missing Core identities/academic registrations, stale trip members that are no longer subscribed, and multiple assignments in one direction.
 
+The KG aggregate accepts normalized and combined labels including `KG1`, `KG2`, `kg1 بستان`, `kg2 تمهيدي`, `بستان`, and `تمهيدي`. Filtered transportation summaries show synchronized source-row count separately from distinct-student count so duplicate Oracle rows remain visible without double-counting students.
+
 ## Database changes in 2.4.1
 
 - Family stops add `area_assignment_source`, `area_assigned_by`, and `area_assigned_at`.

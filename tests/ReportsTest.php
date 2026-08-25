@@ -107,6 +107,22 @@ class Olama_Transportation_Reports_Test extends WP_UnitTestCase
         $this->assertEmpty($by_student['ORA-STU-F1-S1']['departure']);
     }
 
+    public function test_kg_filter_normalizes_combined_labels_and_reports_source_rows_separately()
+    {
+        $this->student('F1', 'S1', false); $this->transport('F1', 'S1', 1, true, 'kg1 بستان');
+        $this->transport('F1', 'S1', 1, true, 'kg1 بستان');
+        $this->student('F2', 'S2', false); $this->transport('F2', 'S2', 1, true, 'kg2 تمهيدي');
+        $this->student('F3', 'S3', false); $this->transport('F3', 'S3', 1, true, 'أول أساسي');
+
+        $report = Olama_Transportation_Reports::school_report($this->year_id, array(
+            'population'=>'transportation', 'direction'=>'all', 'school_filter'=>'kgs',
+        ));
+
+        $this->assertSame(2, $report['summary']['filtered_students']);
+        $this->assertSame(3, $report['summary']['filtered_subscription_records']);
+        $this->assertSame(1, $report['summary']['filtered_duplicate_subscription_records']);
+    }
+
     private function student($family, $student, $registered)
     {
         global $wpdb;
@@ -128,13 +144,13 @@ class Olama_Transportation_Reports_Test extends WP_UnitTestCase
         ));
     }
 
-    private function transport($family, $student, $active, $identity_exists = true)
+    private function transport($family, $student, $active, $identity_exists = true, $grade = 'Grade 1')
     {
         global $wpdb;
         $wpdb->insert($wpdb->prefix . 'olama_core_student_transportation', array(
             'family_uid'=>'ORA-FAM-' . $family, 'student_uid'=>'ORA-STU-' . $family . '-' . $student,
             'oracle_family_id'=>$family, 'oracle_student_id'=>$student, 'study_year'=>'2026-2027',
-            'class_name'=>$identity_exists ? 'Grade 1' : 'KG1', 'section_name'=>'A', 'is_active'=>$active,
+            'class_name'=>$identity_exists ? $grade : 'KG1', 'section_name'=>'A', 'is_active'=>$active,
             'last_synced_at'=>$this->now, 'created_at'=>$this->now, 'updated_at'=>$this->now,
         ));
     }
