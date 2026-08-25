@@ -32,6 +32,7 @@ class Olama_Transportation_Effective_Assignments
         // the students who actually have an active Core transportation record.
         $transport_counts = self::transportation_counts($study_year, $demand_rows, $include_all_students ? 'academic_registration_fallback' : $mode);
         $transport_kg_g1_counts = self::transportation_kg_g1_counts($study_year, $direction, $demand_rows, $include_all_students ? 'academic_registration_fallback' : $mode);
+        $canonical_populations = $include_all_students ? self::canonical_family_populations($study_year, $demand_rows) : null;
 
         $areas_table = Olama_Transportation_DB::table('major_areas');
         $allocation_table = Olama_Transportation_DB::table('area_bus_assignments');
@@ -41,6 +42,7 @@ class Olama_Transportation_Effective_Assignments
             ARRAY_A
         );
         $area_index = array();
+        $area_populations = array();
         foreach ($areas as &$area) {
             $area['id'] = (int) $area['id'];
             $area['family_count'] = 0;
@@ -49,6 +51,7 @@ class Olama_Transportation_Effective_Assignments
             $area['transport_kg_g1_count'] = 0;
             $area['non_transportation_student_count'] = 0;
             $area['missing_location_family_count'] = 0;
+            $area_populations[$area['id']] = array('families'=>array(), 'academic'=>array(), 'transportation'=>array(), 'kg_g1'=>array());
             $area_index[$area['id']] = &$area;
         }
         unset($area);
@@ -77,6 +80,10 @@ class Olama_Transportation_Effective_Assignments
         $trip_usage = array();
         foreach ($demand_rows as $row) {
             $count = (int) $row['student_count'];
+            $family_uid = (string) ($row['family_uid'] ?? '');
+            $canonical_academic = $canonical_populations['academic'][$family_uid] ?? array();
+            $canonical_transportation = $canonical_populations['transportation'][$family_uid] ?? array();
+            if ($canonical_populations !== null) $count = count($canonical_academic);
             if ($count < 1) {
                 continue;
             }
@@ -93,11 +100,20 @@ class Olama_Transportation_Effective_Assignments
             $valid_area = $area_id && isset($area_index[$area_id]);
             $assignment = $valid_area && isset($allocation_by_area[$area_id]) ? $allocation_by_area[$area_id] : null;
             if ($area_id && isset($area_index[$area_id])) {
-                $area_index[$area_id]['family_count']++;
-                $area_index[$area_id]['student_count'] += $count;
-                $transport_count = (int) ($transport_counts[(string) $row['family_uid']] ?? ($mode === 'transport_enrollments' ? $count : 0));
-                $area_index[$area_id]['transportation_student_count'] += min($count, max(0, $transport_count));
-                $area_index[$area_id]['transport_kg_g1_count'] += min($count, max(0, (int) ($transport_kg_g1_counts[(string) $row['family_uid']] ?? 0)));
+                if ($canonical_populations !== null) {
+                    $area_populations[$area_id]['families'][$family_uid] = true;
+                    foreach (($canonical_populations['academic'][$family_uid] ?? array()) as $student_uid => $student) $area_populations[$area_id]['academic'][$student_uid] = $student;
+                    foreach (($canonical_populations['transportation'][$family_uid] ?? array()) as $student_uid => $student) {
+                        $area_populations[$area_id]['transportation'][$student_uid] = $student;
+                        if (self::is_transport_kg_g1_grade($student['class_name'] ?? '')) $area_populations[$area_id]['kg_g1'][$student_uid] = true;
+                    }
+                } else {
+                    $area_index[$area_id]['family_count']++;
+                    $area_index[$area_id]['student_count'] += $count;
+                    $transport_count = (int) ($transport_counts[$family_uid] ?? ($mode === 'transport_enrollments' ? $count : 0));
+                    $area_index[$area_id]['transportation_student_count'] += min($count, max(0, $transport_count));
+                    $area_index[$area_id]['transport_kg_g1_count'] += min($count, max(0, (int) ($transport_kg_g1_counts[$family_uid] ?? 0)));
+                }
                 if (!$valid_location) {
                     $area_index[$area_id]['missing_location_family_count']++;
                 }
@@ -127,7 +143,8 @@ class Olama_Transportation_Effective_Assignments
                 'bus_number' => $assignment ? (string) $assignment['bus_number'] : '',
                 'trip_number' => $assignment ? $assignment['trip_number'] : null,
                 'student_count' => $count,
-                'transportation_student_count' => min($count, max(0, (int) ($transport_counts[(string) $row['family_uid']] ?? ($mode === 'transport_enrollments' ? $count : 0)))),
+                'transportation_student_count' => $canonical_populations !== null ? count($canonical_transportation) : min($count, max(0, (int) ($transport_counts[$family_uid] ?? ($mode === 'transport_enrollments' ? $count : 0)))),
+                'non_transportation_student_count' => $canonical_populations !== null ? count(array_diff_key($canonical_academic, $canonical_transportation)) : max(0, $count - (int) ($transport_counts[$family_uid] ?? 0)),
                 'effective_capacity' => $assignment ? $assignment['effective_capacity'] : 0,
                 'demand_mode' => $mode,
                 'assignment_status' => $status,
@@ -137,6 +154,15 @@ class Olama_Transportation_Effective_Assignments
         $allocated_students = 0;
         $problem_count = 0;
         foreach ($areas as &$area) {
+            if ($canonical_populations !== null) {
+                $population = $area_populations[$area['id']];
+                $student_metrics = self::summarize_student_sets($population['academic'], $population['transportation']);
+                $area['family_count'] = count($population['families']);
+                $area['student_count'] = $student_metrics['academic'];
+                $area['transportation_student_count'] = $student_metrics['transportation'];
+                $area['transport_kg_g1_count'] = count($population['kg_g1']);
+                $area['non_transportation_student_count'] = $student_metrics['walking'];
+            }
             $allocation = $allocation_by_area[$area['id']] ?? null;
             $used = 0;
             $capacity = 0;
@@ -180,7 +206,7 @@ class Olama_Transportation_Effective_Assignments
         }
         unset($area);
         foreach ($areas as &$area) {
-            $area['non_transportation_student_count'] = max(0, (int) $area['student_count'] - (int) $area['transportation_student_count']);
+            if ($canonical_populations === null) $area['non_transportation_student_count'] = max(0, (int) $area['student_count'] - (int) $area['transportation_student_count']);
         }
         unset($area);
         foreach ($families as &$family) {
@@ -318,6 +344,30 @@ class Olama_Transportation_Effective_Assignments
         return $cache[$cache_key] = $result;
     }
 
+    /** Canonical distinct academic and transportation student sets by family. */
+    private static function canonical_family_populations($study_year, array $demand_rows)
+    {
+        global $wpdb;
+        $family_uids = array_values(array_unique(array_filter(array_map('strval', array_column($demand_rows, 'family_uid')))));
+        $academic = array();
+        if ($family_uids && function_exists('olama_core')) {
+            $student_years = olama_core()->read_models()->table('student_years');
+            $alternate = strpos($study_year, '/') !== false ? str_replace('/', '-', $study_year) : str_replace('-', '/', $study_year);
+            $placeholders = implode(',', array_fill(0, count($family_uids), '%s'));
+            $rows = $wpdb->get_results($wpdb->prepare(
+                "SELECT family_uid,student_uid,class_name FROM {$student_years} WHERE study_year IN (%s,%s) AND family_uid IN ({$placeholders})",
+                array_merge(array($study_year, $alternate), $family_uids)
+            ), ARRAY_A);
+            foreach ((array) $rows as $row) {
+                $family_uid = (string) ($row['family_uid'] ?? '');
+                $student_uid = (string) ($row['student_uid'] ?? '');
+                if ($family_uid === '' || $student_uid === '') continue;
+                $academic[$family_uid][$student_uid] = array('class_name'=>(string)($row['class_name'] ?? ''));
+            }
+        }
+        return array('academic'=>$academic, 'transportation'=>self::core_transport_students($study_year, $demand_rows));
+    }
+
     /** Compatibility path for installations whose Core transportation mirror is unavailable. */
     private static function legacy_core_transport_students($study_year, array $demand_rows)
     {
@@ -337,10 +387,21 @@ class Olama_Transportation_Effective_Assignments
         return $result;
     }
 
-    private static function is_transport_kg_g1_grade($grade)
+    public static function is_transport_kg_g1_grade($grade)
     {
         $grade = function_exists('mb_strtolower') ? mb_strtolower(trim((string) $grade), 'UTF-8') : strtolower(trim((string) $grade));
         $grade = preg_replace('/\s+/u', ' ', $grade);
-        return in_array($grade, array('kg1','kg 1','kg-1','kg2','kg 2','kg-2','تمهيدي','بستان','الصف الأول','الصف الاول','صف أول','صف اول','الأول','الاول','grade 1','first grade','1'), true);
+        return preg_match('/(?:^|[^a-z0-9])kg(?:\s*-?\s*[12])?(?:[^a-z0-9]|$)/iu', $grade) === 1
+            || preg_match('/(?:^|\s)(?:تمهيدي|بستان|الصف\s+الأول|الصف\s+الاول|صف\s+أول|صف\s+اول|الأول|الاول|أول\s+أساسي|اول\s+اساسي|الأول\s+الأساسي|الاول\s+الاساسي)(?:\s|$)/u', $grade) === 1
+            || in_array($grade, array('grade 1','first grade','g1','1'), true);
+    }
+
+    public static function summarize_student_sets(array $academic, array $transportation)
+    {
+        return array(
+            'academic' => count($academic),
+            'transportation' => count($transportation),
+            'walking' => count(array_diff_key($academic, $transportation)),
+        );
     }
 }
