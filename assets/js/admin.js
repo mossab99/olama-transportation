@@ -1,6 +1,7 @@
 (function ($) {
     function t(key) {
-        return (window.olamaTransportation && olamaTransportation.i18n && olamaTransportation.i18n[key]) || key;
+        var configured = window.olamaTransportation && olamaTransportation.i18n && olamaTransportation.i18n[key];
+        return configured || (typeof window.olamaTransportationTranslate === 'function' ? window.olamaTransportationTranslate(key) : key);
     }
 
     function nonce() {
@@ -424,10 +425,10 @@
     $(document).on('dragover', '.olama-route-stop', function(event){event.preventDefault();});
     $(document).on('drop', '.olama-route-stop[draggable="true"]', function(event){event.preventDefault();var id=String(event.originalEvent.dataTransfer.getData('text/plain')),source=$('.olama-route-stop[data-stop-id="'+id+'"]')[0];if(source&&source!==this){var list=this.parentNode;list.insertBefore(source,this);}var ordered=$('#olama-route-stop-list .olama-route-stop').map(function(){return Number($(this).data('stop-id'));}).get();routeEditorData.stops.sort(function(a,b){return ordered.indexOf(Number(a.stop_id))-ordered.indexOf(Number(b.stop_id));});renderRouteEditor();});
     $(document).on('click', '#olama-save-route-order', function(){if(!routeEditorData||routeEditorData.status!=='draft')return;var ids=$('#olama-route-stop-list .olama-route-stop').map(function(){return Number($(this).data('stop-id'));}).get();rest('routes/'+routeEditorData.id,{method:'PUT',body:{stop_ids:ids}}).then(function(route){routeEditorData=route;renderRouteEditor();$('#olama-route-editor-status').text('Route order saved.');}).catch(function(error){$('#olama-route-editor-status').text(error.message);});});
-    $(document).on('click', '#olama-rebuild-route', function(){if(!routeEditorData||routeEditorData.status!=='draft')return;if(!window.confirm('Rebuild stops from the current trip locations?'))return;rest('routes/'+routeEditorData.id,{method:'PUT',body:{rebuild_from_trip:true}}).then(function(route){routeEditorData=route;renderRouteEditor();$('#olama-route-editor-status').text('Stops rebuilt from the trip.');}).catch(function(error){$('#olama-route-editor-status').text(error.message);});});
+    $(document).on('click', '#olama-rebuild-route', function(){if(!routeEditorData||routeEditorData.status!=='draft')return;if(!window.confirm(t('Rebuild stops from the current trip locations?')))return;rest('routes/'+routeEditorData.id,{method:'PUT',body:{rebuild_from_trip:true}}).then(function(route){routeEditorData=route;renderRouteEditor();$('#olama-route-editor-status').text(t('Stops rebuilt from the trip.'));}).catch(function(error){$('#olama-route-editor-status').text(error.message);});});
 
     $(document).on('click', '.olama-publish-route', function () {
-        if (!window.confirm('Publish this immutable route version?')) {
+        if (!window.confirm(t('Publish this immutable route version?'))) {
             return;
         }
         rest('routes/' + $(this).data('id') + '/publish', {method: 'POST'})
@@ -484,7 +485,7 @@
 
     $('#family-location-bulk-save').on('click', function () {
         var ids = $('.family-location-select:checked').map(function () { return parseInt(this.value, 10); }).get();
-        if (!ids.length) { alert('Select at least one family location.'); return; }
+        if (!ids.length) { alert(t('Select at least one family location.')); return; }
         var $button = $(this).prop('disabled', true);
         rest('family-locations/bulk-area', {method: 'POST', body: {family_stop_ids: ids, major_area_id: parseInt($('#family-location-bulk-area').val() || 0, 10)}})
             .then(function () { window.location.reload(); })
@@ -578,12 +579,15 @@
         values.school_location = {latitude: values['school_location[latitude]'] || '', longitude: values['school_location[longitude]'] || ''};
         delete values['school_location[latitude]']; delete values['school_location[longitude]'];
         rest('settings', {method: 'PUT', body: values})
-            .then(function () { $('#settings-result').text(t('saved')); })
+            .then(function () {
+                $('#settings-result').text(t('settingsSaved'));
+                window.location.reload();
+            })
             .catch(function (error) { $('#settings-result').text(error.message); });
     });
     function toggleOptimizerPanels() { var provider=$('#optimizer-provider').val(); $('[data-optimizer-panel]').each(function(){ $(this).toggle($(this).data('optimizer-panel') === provider); }); }
     $(document).on('change', '#optimizer-provider', toggleOptimizerPanels); toggleOptimizerPanels();
-    $(document).on('click', '#test-ors-configuration', function(){ var button=this; $(button).prop('disabled',true).text('Testing...'); rest('settings/test-ors',{method:'POST'}).then(function(r){$('#settings-result').text(r.message||'OpenRouteService configuration is working.');}).catch(function(e){$('#settings-result').text(e.message);}).finally(function(){$(button).prop('disabled',false).text('Test ORS Configuration');}); });
+    $(document).on('click', '#test-ors-configuration', function(){ var button=this; $(button).prop('disabled',true).text(t('testing')); rest('settings/test-ors',{method:'POST'}).then(function(r){$('#settings-result').text(r.message||'OpenRouteService configuration is working.');}).catch(function(e){$('#settings-result').text(e.message);}).finally(function(){$(button).prop('disabled',false).text(t('testOrs'));}); });
 
     $('#refresh-core-buses').on('click', function () {
         var $button = $(this).prop('disabled', true);

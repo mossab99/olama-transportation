@@ -2,6 +2,8 @@
 
 School transportation planning for the Olama ecosystem. Version 2.8.0 adds trip-owned companions, bus-derived drivers on trip cards, and private CR80 student transportation badge printing.
 
+The Transportation Settings screen includes an independent English/Arabic language selector. It controls the complete workspace, dynamically rendered reports, print layouts, plugin REST messages, and RTL presentation without changing the WordPress or Olama School language.
+
 ## Effective planning model
 
 The active relationship is:

@@ -444,6 +444,7 @@ class Olama_Transportation_REST
         $lng = $input['school_location']['longitude'] ?? ($current['school_location']['longitude'] ?? null);
         if (($lat !== null && $lat !== '' && (!is_numeric($lat) || (float)$lat < -90 || (float)$lat > 90)) || ($lng !== null && $lng !== '' && (!is_numeric($lng) || (float)$lng < -180 || (float)$lng > 180))) return new WP_Error('invalid_school_location', __('Academy coordinates must be valid latitude/longitude values.', 'olama-transportation'), array('status'=>400));
         $settings = array(
+            'language' => in_array(($input['language'] ?? ($current['language'] ?? 'en')), array('en', 'ar'), true) ? ($input['language'] ?? ($current['language'] ?? 'en')) : 'en',
             'optimizer_provider' => in_array(($input['optimizer_provider'] ?? 'manual'), array('manual', 'ors', 'google', 'webhook'), true) ? $input['optimizer_provider'] : 'manual',
             'ors_profile' => in_array(($input['ors_profile'] ?? ($current['ors_profile'] ?? 'driving-car')), array('driving-car','driving-hgv','cycling-regular','foot-walking'), true) ? $input['ors_profile'] : 'driving-car',
             'ors_service_duration_seconds' => max(0, absint($input['ors_service_duration_seconds'] ?? ($current['ors_service_duration_seconds'] ?? 60))),

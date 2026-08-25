@@ -210,6 +210,7 @@ final class Olama_Transportation_Plugin
             return;
         }
         add_option('olama_transportation_settings', array(
+            'language' => 'en',
             'optimizer_provider' => 'manual',
             'traccar_enabled' => 0,
             'school_location' => array('latitude' => null, 'longitude' => null),

@@ -4,6 +4,10 @@
     var state = { filters: [] };
     var $ = function (selector) { return document.querySelector(selector); };
     var esc = function (value) { var node = document.createElement('div'); node.textContent = value == null ? '' : value; return node.innerHTML; };
+    var tr = function (text) {
+        if (typeof window.olamaTransportationTranslate === 'function') return window.olamaTransportationTranslate(text);
+        return olamaReports.language === 'ar' && olamaReports.i18n && olamaReports.i18n[text] ? olamaReports.i18n[text] : text;
+    };
 
     function api(path, params) {
         var query = params ? '?' + new URLSearchParams(params).toString() : '';
@@ -71,11 +75,11 @@
         setOptions('#school-report-section', sections, 'All sections'); if (renderAfter !== false) renderSchool();
     }
 
-    function statusLabel(status) { return {fully_assigned:'Assigned both directions',partial:'One direction only',assigned:'Assigned',unassigned:'Not assigned'}[status] || status || '—'; }
+    function statusLabel(status) { var label={fully_assigned:'Assigned both directions',partial:'One direction only',assigned:'Assigned',unassigned:'Not assigned'}[status]; return label ? tr(label) : status || '—'; }
     function tripCell(run) {
         if (!run || !run.trip_id) return '<span class="family-no-trip">—</span>';
-        var warning = run.conflict_count ? '<small class="report-warning">Multiple assignments detected</small>' : '';
-        return '<div><strong>' + esc(run.trip_name || '—') + '</strong><small>' + esc([run.driver_name, run.bus_number ? 'Bus ' + run.bus_number : ''].filter(Boolean).join(' · ') || '—') + '</small>' + warning + '</div>';
+        var warning = run.conflict_count ? '<small class="report-warning">'+esc(tr('Multiple assignments detected'))+'</small>' : '';
+        return '<div><strong>' + esc(run.trip_name || '—') + '</strong><small>' + esc([run.driver_name, run.bus_number ? tr('Bus') + ' ' + run.bus_number : ''].filter(Boolean).join(' · ') || '—') + '</small>' + warning + '</div>';
     }
 
     function sortRows(rows) {
@@ -92,13 +96,13 @@
         var summary=data.summary||{}, diagnostics=data.diagnostics||{};
         var assignment=data.population==='walking'?'':'<span><b>'+Number(summary.fully_assigned||summary.assigned||0)+'</b> assigned</span><span><b>'+Number(summary.partial||0)+'</b> partial</span><span><b>'+Number(summary.unassigned||0)+'</b> unassigned</span>';
         var warnings=[];
-        if(diagnostics.duplicate_subscription_records)warnings.push(diagnostics.duplicate_subscription_records+' duplicate subscription rows collapsed');
-        if(diagnostics.missing_academic_registration)warnings.push(diagnostics.missing_academic_registration+' subscribed students missing academic registration');
-        if(diagnostics.missing_student_identity)warnings.push(diagnostics.missing_student_identity+' missing student identities');
-        if(diagnostics.stale_assigned_students)warnings.push(diagnostics.stale_assigned_students+' assigned students are not actively subscribed');
-        if(diagnostics.assignment_conflicts)warnings.push(diagnostics.assignment_conflicts+' duplicate direction assignments');
+        if(diagnostics.duplicate_subscription_records)warnings.push(diagnostics.duplicate_subscription_records+' '+tr('duplicate subscription rows collapsed'));
+        if(diagnostics.missing_academic_registration)warnings.push(diagnostics.missing_academic_registration+' '+tr('subscribed students missing academic registration'));
+        if(diagnostics.missing_student_identity)warnings.push(diagnostics.missing_student_identity+' '+tr('missing student identities'));
+        if(diagnostics.stale_assigned_students)warnings.push(diagnostics.stale_assigned_students+' '+tr('assigned students are not actively subscribed'));
+        if(diagnostics.assignment_conflicts)warnings.push(diagnostics.assignment_conflicts+' '+tr('duplicate direction assignments'));
         var sourceRows=data.population==='walking'?'':'<span><b>'+Number(summary.filtered_subscription_records||0)+'</b> synchronized rows</span>';
-        return '<div class="school-report-summary"><span><b>'+Number(summary.filtered_students||0)+'</b> distinct students shown</span>'+sourceRows+'<span><b>'+Number(summary.subscribed_students||0)+'</b> school-wide subscribed</span><span><b>'+Number(summary.walking_students||0)+'</b> school-wide walking</span>'+assignment+'</div>'+(warnings.length?'<div class="report-diagnostics"><strong>Data checks:</strong> '+esc(warnings.join(' · '))+'</div>':'');
+        return '<div class="school-report-summary"><span><b>'+Number(summary.filtered_students||0)+'</b> '+esc(tr('distinct students shown'))+'</span>'+sourceRows+'<span><b>'+Number(summary.subscribed_students||0)+'</b> '+esc(tr('school-wide subscribed'))+'</span><span><b>'+Number(summary.walking_students||0)+'</b> '+esc(tr('school-wide walking'))+'</span>'+assignment+'</div>'+(warnings.length?'<div class="report-diagnostics"><strong>'+esc(tr('Data checks:'))+'</strong> '+esc(warnings.join(' · '))+'</div>':'');
     }
 
     function renderSchool() {
@@ -119,7 +123,7 @@
         api('reports/families',{academic_year_id:$('#family-report-year').value,search:search}).then(function(data){
             var html=(data.items||[]).map(function(family){
                 var rows=(family.students||[]).map(function(row,index){return '<tr><td>'+(index+1)+'</td><td><strong>'+esc(row.student_name)+'</strong></td><td>'+esc(row.grade_name||'—')+'</td><td>'+esc(row.section_name||'—')+'</td><td>'+esc(row.subscribed?'Subscribed':'Walking')+'</td><td>'+tripCell(row.arrival)+'</td><td>'+tripCell(row.departure)+'</td></tr>';}).join('');
-                return '<section class="family-report-card"><h3>'+esc(family.family_name)+' <small>Family #'+esc(family.oracle_family_id)+'</small></h3><p class="family-report-contact"><span>Father: '+esc(family.father_mobile||'—')+'</span><span>Mother: '+esc(family.mother_mobile||'—')+'</span><span>Area: '+esc(family.planning_area||'—')+'</span></p><table><thead><tr><th>#</th><th>Student</th><th>Grade</th><th>Section</th><th>Subscription</th><th>Arrival</th><th>Departure</th></tr></thead><tbody>'+rows+'</tbody></table></section>';
+                return '<section class="family-report-card"><h3>'+esc(family.family_name)+' <small>'+esc(tr('Family #'))+' '+esc(family.oracle_family_id)+'</small></h3><p class="family-report-contact"><span>'+esc(tr('Father:'))+' '+esc(family.father_mobile||'—')+'</span><span>'+esc(tr('Mother:'))+' '+esc(family.mother_mobile||'—')+'</span><span>'+esc(tr('Area:'))+' '+esc(family.planning_area||'—')+'</span></p><table><thead><tr><th>#</th><th>Student</th><th>Grade</th><th>Section</th><th>Subscription</th><th>Arrival</th><th>Departure</th></tr></thead><tbody>'+rows+'</tbody></table></section>';
             }).join('');
             $('#family-report-results').innerHTML=html||'<p>No matching families found.</p>'; $('#school-report-feedback').textContent='';
         }).catch(showError);
@@ -133,7 +137,7 @@
         }).catch(showError);
     }
 
-    function printHtml(title,content){var win=window.open('','_blank');if(!win)return;win.document.write('<!doctype html><html><head><meta charset="utf-8"><title>'+esc(title)+'</title><style>@page{size:A4 landscape;margin:8mm}body{font-family:Arial,Tahoma,sans-serif;color:#172033}table{width:100%;border-collapse:collapse;font-size:8px}th,td{border:1px solid #aeb8c7;padding:4px;text-align:left;vertical-align:top}th{background:#eaf0f7}.school-report-summary{display:flex;gap:12px;margin:8px 0}.school-report-summary span{border:1px solid #ccc;padding:5px}.report-diagnostics{color:#8a4b00;margin:6px 0}@media print{button{display:none}}</style></head><body><button onclick="window.print()">Print</button><h1>'+esc(title)+'</h1>'+content+'</body></html>');win.document.close();}
+    function printHtml(title,content){var win=window.open('','_blank');if(!win)return;win.document.write('<!doctype html><html lang="'+esc(olamaReports.language||'en')+'" dir="'+esc(olamaReports.direction||'ltr')+'"><head><meta charset="utf-8"><title>'+esc(title)+'</title><style>@page{size:A4 landscape;margin:8mm}body{font-family:Arial,Tahoma,sans-serif;color:#172033}table{width:100%;border-collapse:collapse;font-size:8px}th,td{border:1px solid #aeb8c7;padding:4px;text-align:start;vertical-align:top}th{background:#eaf0f7}.school-report-summary{display:flex;gap:12px;margin:8px 0}.school-report-summary span{border:1px solid #ccc;padding:5px}.report-diagnostics{color:#8a4b00;margin:6px 0}@media print{button{display:none}}</style></head><body><button onclick="window.print()">'+esc(tr('Print'))+'</button><h1>'+esc(title)+'</h1>'+content+'</body></html>');win.document.close();}
 
     function selectType(){var type=currentType(),school=type==='school'||type==='walking';$('#school-report-panel').hidden=!school;$('#family-report-panel').hidden=type!=='family';$('#unassigned-report-panel').hidden=type!=='unassigned';document.querySelectorAll('.report-transport-only').forEach(function(item){item.hidden=type==='walking';});if(school){$('#school-report-heading').textContent=type==='walking'?'Walking students':'Transportation subscription and assignment report';$('#school-report-description').textContent=type==='walking'?'Academically registered students without an active synchronized transportation subscription.':'Subscription comes from synchronized Core transportation records; assignments come from local trips.';loadFilters();}if(type==='family')familyReport();if(type==='unassigned')unassignedReport();}
     function showError(error){$('#school-report-feedback').textContent=error.message||String(error);}
@@ -143,7 +147,7 @@
         document.querySelectorAll('.reports-block').forEach(function(block){block.addEventListener('click',function(){$('#school-report-type').value=block.getAttribute('data-report-type');document.querySelectorAll('.reports-block').forEach(function(item){item.classList.toggle('is-active',item===block);});selectType();});});
         $('#school-report-year').addEventListener('change',loadFilters);$('#school-report-direction').addEventListener('change',loadFilters);$('#school-report-grade').addEventListener('change',function(){updateSections(true);});
         ['#school-report-section','#school-report-area','#school-report-trip','#school-report-assignment'].forEach(function(selector){$(selector).addEventListener('change',renderSchool);});
-        $('#school-report-print').addEventListener('click',function(){printHtml('Transportation report',$('#school-report-results').innerHTML);});$('#family-report-search-button').addEventListener('click',familyReport);$('#family-report-search').addEventListener('keydown',function(event){if(event.key==='Enter'){event.preventDefault();familyReport();}});$('#family-report-print').addEventListener('click',function(){printHtml('Family transportation report',$('#family-report-results').innerHTML);});
-        $('#unassigned-report-year').addEventListener('change',unassignedReport);$('#unassigned-report-scope').addEventListener('change',unassignedReport);$('#unassigned-report-print').addEventListener('click',function(){printHtml('Transportation assignment gaps',$('#unassigned-report-results').innerHTML);});selectType();
+        $('#school-report-print').addEventListener('click',function(){printHtml(tr('Transportation report'),$('#school-report-results').innerHTML);});$('#family-report-search-button').addEventListener('click',familyReport);$('#family-report-search').addEventListener('keydown',function(event){if(event.key==='Enter'){event.preventDefault();familyReport();}});$('#family-report-print').addEventListener('click',function(){printHtml(tr('Family transportation report'),$('#family-report-results').innerHTML);});
+        $('#unassigned-report-year').addEventListener('change',unassignedReport);$('#unassigned-report-scope').addEventListener('change',unassignedReport);$('#unassigned-report-print').addEventListener('click',function(){printHtml(tr('Transportation assignment gaps'),$('#unassigned-report-results').innerHTML);});selectType();
     });
 }());

@@ -19,6 +19,8 @@ define('OLAMA_TRANSPORTATION_FILE', __FILE__);
 define('OLAMA_TRANSPORTATION_PATH', plugin_dir_path(__FILE__));
 define('OLAMA_TRANSPORTATION_URL', plugin_dir_url(__FILE__));
 
+require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-i18n.php';
+Olama_Transportation_I18n::register();
 require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-db.php';
 require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-plugin.php';
 
