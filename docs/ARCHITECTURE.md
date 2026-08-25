@@ -54,7 +54,9 @@ Capacity is scoped to academic year + direction + bus + trip. Positive `planning
 ## Permissions and audits
 
 - View: `olama_access_transport_mgmt`.
-- Manage family areas and area trips: `olama_manage_transport_buses`.
+- Manage fleet, family areas and locations, area trips, routes, and settings: `olama_manage_transport_buses`.
+- Publish routes and shared trips: `olama_approve_transport_routes` (the manage capability is also accepted).
+- The plugin explicitly registers the full current tab/action tree with OLAMA Users because WordPress admin-menu discovery cannot discover tabs.
 - Legacy group lifecycle retains its prior approval convention only for compatibility.
 
 Audits contain identifiers and aggregate calculations, not student identity. Events include family assign/clear/bulk, area-trip assign/update/unassign, and rejected capacity attempts.
