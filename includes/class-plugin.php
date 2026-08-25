@@ -45,6 +45,7 @@ final class Olama_Transportation_Plugin
 
         add_action('admin_notices', array($this, 'dependency_notice'));
         add_filter('olama_dashboard_cards', array($this, 'register_hub_card'), 20);
+        add_action('olama_users_register_modules', array($this, 'register_users_module'));
 
         $this->available = $this->dependencies_available();
         if (!$this->available) {
@@ -203,6 +204,119 @@ final class Olama_Transportation_Plugin
         );
 
         return $cards;
+    }
+
+    /**
+     * Declare the current Transportation surfaces and actions to OLAMA Users.
+     *
+     * The module is implemented as tabs under one WordPress admin page, so
+     * admin-menu discovery alone cannot keep its capability tree up to date.
+     */
+    public function register_users_module()
+    {
+        if (!$this->available || !function_exists('olama_users_register_module')) {
+            return;
+        }
+
+        $view = 'olama_access_transport_mgmt';
+        $manage = 'olama_manage_transport_buses';
+        $approve = 'olama_approve_transport_routes';
+        $page_url = admin_url('admin.php?page=olama-transportation');
+
+        olama_users_register_module(array(
+            'id' => 'olama_transportation',
+            'plugin' => 'olama-transportation',
+            'label' => __('Olama Transportation', 'olama-transportation'),
+            'capability' => $view,
+            'items' => array(
+                array(
+                    'id' => 'olama_transportation.workspace',
+                    'type' => 'submenu',
+                    'label' => __('Transportation', 'olama-transportation'),
+                    'capability' => $view,
+                    'url' => $page_url,
+                    'tabs' => array(
+                        array('id' => 'olama_transportation.overview', 'type' => 'tab', 'label' => __('Overview', 'olama-transportation'), 'capability' => $view),
+                        array(
+                            'id' => 'olama_transportation.buses',
+                            'type' => 'tab',
+                            'label' => __('Buses', 'olama-transportation'),
+                            'capability' => $view,
+                            'actions' => array(
+                                array('id' => 'olama_transportation.buses.manage', 'type' => 'action', 'label' => __('Manage buses', 'olama-transportation'), 'capability' => $manage),
+                            ),
+                        ),
+                        array(
+                            'id' => 'olama_transportation.trips',
+                            'type' => 'tab',
+                            'label' => __('Trips', 'olama-transportation'),
+                            'capability' => $view,
+                            'actions' => array(
+                                array('id' => 'olama_transportation.trips.manage', 'type' => 'action', 'label' => __('Manage trips and assignments', 'olama-transportation'), 'capability' => $manage),
+                                array('id' => 'olama_transportation.trips.approve', 'type' => 'action', 'label' => __('Publish and return trips', 'olama-transportation'), 'capability' => $approve),
+                            ),
+                        ),
+                        array(
+                            'id' => 'olama_transportation.family_move',
+                            'type' => 'tab',
+                            'label' => __('Family Move', 'olama-transportation'),
+                            'capability' => $view,
+                            'actions' => array(
+                                array('id' => 'olama_transportation.family_move.manage', 'type' => 'action', 'label' => __('Move families between trips', 'olama-transportation'), 'capability' => $manage),
+                            ),
+                        ),
+                        array(
+                            'id' => 'olama_transportation.planning',
+                            'type' => 'tab',
+                            'label' => __('Area Coverage', 'olama-transportation'),
+                            'capability' => $view,
+                            'actions' => array(
+                                array('id' => 'olama_transportation.planning.manage', 'type' => 'action', 'label' => __('Manage areas and allocations', 'olama-transportation'), 'capability' => $manage),
+                            ),
+                        ),
+                        array(
+                            'id' => 'olama_transportation.routes',
+                            'type' => 'tab',
+                            'label' => __('Routes', 'olama-transportation'),
+                            'capability' => $view,
+                            'actions' => array(
+                                array('id' => 'olama_transportation.routes.manage', 'type' => 'action', 'label' => __('Create, edit, and optimize routes', 'olama-transportation'), 'capability' => $manage),
+                                array('id' => 'olama_transportation.routes.approve', 'type' => 'action', 'label' => __('Publish routes', 'olama-transportation'), 'capability' => $approve),
+                            ),
+                        ),
+                        array(
+                            'id' => 'olama_transportation.family_locations',
+                            'type' => 'tab',
+                            'label' => __('Family Locations', 'olama-transportation'),
+                            'capability' => $view,
+                            'actions' => array(
+                                array('id' => 'olama_transportation.family_locations.manage', 'type' => 'action', 'label' => __('Manage and export family locations', 'olama-transportation'), 'capability' => $manage),
+                            ),
+                        ),
+                        array(
+                            'id' => 'olama_transportation.dual_locations',
+                            'type' => 'tab',
+                            'label' => __('Dual Locations', 'olama-transportation'),
+                            'capability' => $view,
+                            'actions' => array(
+                                array('id' => 'olama_transportation.dual_locations.manage', 'type' => 'action', 'label' => __('Manage dual locations', 'olama-transportation'), 'capability' => $manage),
+                            ),
+                        ),
+                        array(
+                            'id' => 'olama_transportation.companion_locations',
+                            'type' => 'tab',
+                            'label' => __('Companion Locations', 'olama-transportation'),
+                            'capability' => $view,
+                            'actions' => array(
+                                array('id' => 'olama_transportation.companion_locations.manage', 'type' => 'action', 'label' => __('Manage companion locations', 'olama-transportation'), 'capability' => $manage),
+                            ),
+                        ),
+                        array('id' => 'olama_transportation.reports', 'type' => 'tab', 'label' => __('Reports', 'olama-transportation'), 'capability' => $view),
+                        array('id' => 'olama_transportation.settings', 'type' => 'tab', 'label' => __('Settings', 'olama-transportation'), 'capability' => $manage),
+                    ),
+                ),
+            ),
+        ));
     }
 
     private static function default_settings()
