@@ -97,10 +97,10 @@ class Olama_Transportation_REST
             array('methods'=>WP_REST_Server::READABLE,'callback'=>array($this,'family_move_trip'),'permission_callback'=>array($this,'can_view')),
         ));
         register_rest_route(self::NS, '/reports/school-level', array(
-            array('methods'=>WP_REST_Server::READABLE,'callback'=>array($this,'school_level_report'),'permission_callback'=>array($this,'can_view')),
+            array('methods'=>WP_REST_Server::READABLE,'callback'=>array($this,'school_level_report'),'permission_callback'=>array($this,'can_view_reports')),
         ));
-        register_rest_route(self::NS, '/reports/families', array(array('methods'=>WP_REST_Server::READABLE,'callback'=>array($this,'family_report'),'permission_callback'=>array($this,'can_view'))));
-        register_rest_route(self::NS, '/reports/unassigned', array(array('methods'=>WP_REST_Server::READABLE,'callback'=>array($this,'unassigned_report'),'permission_callback'=>array($this,'can_view'))));
+        register_rest_route(self::NS, '/reports/families', array(array('methods'=>WP_REST_Server::READABLE,'callback'=>array($this,'family_report'),'permission_callback'=>array($this,'can_view_reports'))));
+        register_rest_route(self::NS, '/reports/unassigned', array(array('methods'=>WP_REST_Server::READABLE,'callback'=>array($this,'unassigned_report'),'permission_callback'=>array($this,'can_view_reports'))));
         register_rest_route(self::NS, '/areas-workspace/shared-trips/(?P<id>\d+)/publish', array(
             array('methods'=>WP_REST_Server::CREATABLE,'callback'=>array($this,'publish_shared_trip'),'permission_callback'=>array($this,'can_approve')),
         ));
@@ -157,10 +157,10 @@ class Olama_Transportation_REST
             array('methods'=>WP_REST_Server::EDITABLE,'callback'=>array($this,'save_companion_location'),'permission_callback'=>array($this,'can_manage')),
         ));
         register_rest_route(self::NS, '/settings', array(
-            array('methods' => WP_REST_Server::READABLE, 'callback' => array($this, 'get_settings'), 'permission_callback' => array($this, 'can_manage')),
-            array('methods' => WP_REST_Server::EDITABLE, 'callback' => array($this, 'save_settings'), 'permission_callback' => array($this, 'can_manage')),
+            array('methods' => WP_REST_Server::READABLE, 'callback' => array($this, 'get_settings'), 'permission_callback' => array($this, 'can_manage_settings')),
+            array('methods' => WP_REST_Server::EDITABLE, 'callback' => array($this, 'save_settings'), 'permission_callback' => array($this, 'can_manage_settings')),
         ));
-        register_rest_route(self::NS, '/settings/test-ors', array('methods' => WP_REST_Server::CREATABLE, 'callback' => array($this, 'test_ors'), 'permission_callback' => array($this, 'can_manage')));
+        register_rest_route(self::NS, '/settings/test-ors', array('methods' => WP_REST_Server::CREATABLE, 'callback' => array($this, 'test_ors'), 'permission_callback' => array($this, 'can_manage_settings')));
     }
 
     public function can_view()
@@ -171,6 +171,16 @@ class Olama_Transportation_REST
     public function can_manage()
     {
         return $this->can('olama_manage_transport_buses');
+    }
+
+    public function can_view_reports()
+    {
+        return $this->can('olama_view_transport_reports');
+    }
+
+    public function can_manage_settings()
+    {
+        return $this->can('olama_manage_transport_settings');
     }
 
     public function can_approve()

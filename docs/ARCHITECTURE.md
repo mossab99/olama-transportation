@@ -54,7 +54,8 @@ Capacity is scoped to academic year + direction + bus + trip. Positive `planning
 ## Permissions and audits
 
 - View: `olama_access_transport_mgmt`.
-- Manage fleet, family areas and locations, area trips, routes, and settings: `olama_manage_transport_buses`.
+- View individual tabs: one distinct `olama_view_transport_*` capability per tab; tab navigation and direct page access enforce the same map. Settings uses `olama_manage_transport_settings` because the section is inherently administrative.
+- Manage fleet, family areas and locations, area trips, and routes: `olama_manage_transport_buses`.
 - Publish routes and shared trips: `olama_approve_transport_routes` (the manage capability is also accepted).
 - The plugin explicitly registers the full current tab/action tree with OLAMA Users because WordPress admin-menu discovery cannot discover tabs.
 - Legacy group lifecycle retains its prior approval convention only for compatibility.

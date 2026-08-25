@@ -66,7 +66,7 @@ Namespace: `/wp-json/olama-transportation/v1`.
 
 Legacy `/planning/groups` lifecycle routes remain available for compatibility but are deprecated and are not called by the active admin screen.
 
-View access requires `olama_access_transport_mgmt`; fleet, classification, allocation, location, route, and settings changes require `olama_manage_transport_buses`; publishing routes and shared trips may be delegated separately with `olama_approve_transport_routes` (managers may also publish). Transportation explicitly registers its current tabs and actions with OLAMA Users so the role-capability screen does not depend on admin-menu inference. WordPress REST nonce and capability checks apply.
+Opening the Transportation module requires `olama_access_transport_mgmt`. Each of its eleven tabs has a separate `olama_view_transport_*` capability (with `olama_manage_transport_settings` for Settings), so a role can be limited to Reports or any other selected section; unauthorized tabs are hidden and direct tab URLs are rejected. OLAMA Users automatically includes the parent module capability when any Transportation tab is selected. Fleet, classification, allocation, location, and route changes require `olama_manage_transport_buses`; publishing routes and shared trips may be delegated separately with `olama_approve_transport_routes` (managers may also publish). Transportation explicitly registers its current tabs and actions with OLAMA Users so the role-capability screen does not depend on admin-menu inference. WordPress REST nonce and capability checks apply.
 
 ## Concurrency and safety
 

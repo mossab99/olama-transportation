@@ -173,37 +173,55 @@ final class Olama_Transportation_Plugin
                     'label'      => __('Buses', 'olama-transportation'),
                     'icon'       => 'dashicons-car',
                     'url'        => admin_url('admin.php?page=olama-transportation&tab=buses'),
-                    'capability' => 'olama_access_transport_mgmt',
+                    'capability' => 'olama_view_transport_buses',
                     'color'      => '#1a56db',
                 ),
                 array(
-                    'id'         => 'transportation.assignments',
-                    'label'      => __('Student Assignments', 'olama-transportation'),
+                    'id'         => 'transportation.trips',
+                    'label'      => __('Trips', 'olama-transportation'),
                     'icon'       => 'dashicons-groups',
-                    'url'        => admin_url('admin.php?page=olama-transportation&tab=assignments'),
-                    'capability' => 'olama_access_transport_mgmt',
+                    'url'        => admin_url('admin.php?page=olama-transportation&tab=areas'),
+                    'capability' => 'olama_view_transport_trips',
                     'color'      => '#1a56db',
                 ),
                 array(
                     'id'         => 'transportation.planning',
-                    'label'      => __('Planning', 'olama-transportation'),
+                    'label'      => __('Area Coverage', 'olama-transportation'),
                     'icon'       => 'dashicons-location-alt',
                     'url'        => admin_url('admin.php?page=olama-transportation&tab=planning'),
-                    'capability' => 'olama_access_transport_mgmt',
+                    'capability' => 'olama_view_transport_area_coverage',
                     'color'      => '#1a56db',
                 ),
                 array(
-                    'id'         => 'transportation.import',
-                    'label'      => __('Family Locations', 'olama-transportation'),
-                    'icon'       => 'dashicons-upload',
-                    'url'        => admin_url('admin.php?page=olama-transportation&tab=import'),
-                    'capability' => 'olama_manage_transport_buses',
+                    'id'         => 'transportation.reports',
+                    'label'      => __('Reports', 'olama-transportation'),
+                    'icon'       => 'dashicons-chart-bar',
+                    'url'        => admin_url('admin.php?page=olama-transportation&tab=reports'),
+                    'capability' => 'olama_view_transport_reports',
                     'color'      => '#1a56db',
                 ),
             ),
         );
 
         return $cards;
+    }
+
+    /** Map each admin tab to its independently delegable view capability. */
+    public static function tab_capabilities()
+    {
+        return array(
+            'overview' => 'olama_view_transport_overview',
+            'buses' => 'olama_view_transport_buses',
+            'areas' => 'olama_view_transport_trips',
+            'family-move' => 'olama_view_transport_family_move',
+            'planning' => 'olama_view_transport_area_coverage',
+            'routes' => 'olama_view_transport_routes',
+            'import' => 'olama_view_transport_family_locations',
+            'dual' => 'olama_view_transport_dual_locations',
+            'companions' => 'olama_view_transport_companion_locations',
+            'reports' => 'olama_view_transport_reports',
+            'settings' => 'olama_manage_transport_settings',
+        );
     }
 
     /**
@@ -221,6 +239,7 @@ final class Olama_Transportation_Plugin
         $view = 'olama_access_transport_mgmt';
         $manage = 'olama_manage_transport_buses';
         $approve = 'olama_approve_transport_routes';
+        $tabs = self::tab_capabilities();
         $page_url = admin_url('admin.php?page=olama-transportation');
 
         olama_users_register_module(array(
@@ -236,12 +255,12 @@ final class Olama_Transportation_Plugin
                     'capability' => $view,
                     'url' => $page_url,
                     'tabs' => array(
-                        array('id' => 'olama_transportation.overview', 'type' => 'tab', 'label' => __('Overview', 'olama-transportation'), 'capability' => $view),
+                        array('id' => 'olama_transportation.overview', 'type' => 'tab', 'label' => __('Overview', 'olama-transportation'), 'capability' => $tabs['overview']),
                         array(
                             'id' => 'olama_transportation.buses',
                             'type' => 'tab',
                             'label' => __('Buses', 'olama-transportation'),
-                            'capability' => $view,
+                            'capability' => $tabs['buses'],
                             'actions' => array(
                                 array('id' => 'olama_transportation.buses.manage', 'type' => 'action', 'label' => __('Manage buses', 'olama-transportation'), 'capability' => $manage),
                             ),
@@ -250,7 +269,7 @@ final class Olama_Transportation_Plugin
                             'id' => 'olama_transportation.trips',
                             'type' => 'tab',
                             'label' => __('Trips', 'olama-transportation'),
-                            'capability' => $view,
+                            'capability' => $tabs['areas'],
                             'actions' => array(
                                 array('id' => 'olama_transportation.trips.manage', 'type' => 'action', 'label' => __('Manage trips and assignments', 'olama-transportation'), 'capability' => $manage),
                                 array('id' => 'olama_transportation.trips.approve', 'type' => 'action', 'label' => __('Publish and return trips', 'olama-transportation'), 'capability' => $approve),
@@ -260,7 +279,7 @@ final class Olama_Transportation_Plugin
                             'id' => 'olama_transportation.family_move',
                             'type' => 'tab',
                             'label' => __('Family Move', 'olama-transportation'),
-                            'capability' => $view,
+                            'capability' => $tabs['family-move'],
                             'actions' => array(
                                 array('id' => 'olama_transportation.family_move.manage', 'type' => 'action', 'label' => __('Move families between trips', 'olama-transportation'), 'capability' => $manage),
                             ),
@@ -269,7 +288,7 @@ final class Olama_Transportation_Plugin
                             'id' => 'olama_transportation.planning',
                             'type' => 'tab',
                             'label' => __('Area Coverage', 'olama-transportation'),
-                            'capability' => $view,
+                            'capability' => $tabs['planning'],
                             'actions' => array(
                                 array('id' => 'olama_transportation.planning.manage', 'type' => 'action', 'label' => __('Manage areas and allocations', 'olama-transportation'), 'capability' => $manage),
                             ),
@@ -278,7 +297,7 @@ final class Olama_Transportation_Plugin
                             'id' => 'olama_transportation.routes',
                             'type' => 'tab',
                             'label' => __('Routes', 'olama-transportation'),
-                            'capability' => $view,
+                            'capability' => $tabs['routes'],
                             'actions' => array(
                                 array('id' => 'olama_transportation.routes.manage', 'type' => 'action', 'label' => __('Create, edit, and optimize routes', 'olama-transportation'), 'capability' => $manage),
                                 array('id' => 'olama_transportation.routes.approve', 'type' => 'action', 'label' => __('Publish routes', 'olama-transportation'), 'capability' => $approve),
@@ -288,7 +307,7 @@ final class Olama_Transportation_Plugin
                             'id' => 'olama_transportation.family_locations',
                             'type' => 'tab',
                             'label' => __('Family Locations', 'olama-transportation'),
-                            'capability' => $view,
+                            'capability' => $tabs['import'],
                             'actions' => array(
                                 array('id' => 'olama_transportation.family_locations.manage', 'type' => 'action', 'label' => __('Manage and export family locations', 'olama-transportation'), 'capability' => $manage),
                             ),
@@ -297,7 +316,7 @@ final class Olama_Transportation_Plugin
                             'id' => 'olama_transportation.dual_locations',
                             'type' => 'tab',
                             'label' => __('Dual Locations', 'olama-transportation'),
-                            'capability' => $view,
+                            'capability' => $tabs['dual'],
                             'actions' => array(
                                 array('id' => 'olama_transportation.dual_locations.manage', 'type' => 'action', 'label' => __('Manage dual locations', 'olama-transportation'), 'capability' => $manage),
                             ),
@@ -306,13 +325,21 @@ final class Olama_Transportation_Plugin
                             'id' => 'olama_transportation.companion_locations',
                             'type' => 'tab',
                             'label' => __('Companion Locations', 'olama-transportation'),
-                            'capability' => $view,
+                            'capability' => $tabs['companions'],
                             'actions' => array(
                                 array('id' => 'olama_transportation.companion_locations.manage', 'type' => 'action', 'label' => __('Manage companion locations', 'olama-transportation'), 'capability' => $manage),
                             ),
                         ),
-                        array('id' => 'olama_transportation.reports', 'type' => 'tab', 'label' => __('Reports', 'olama-transportation'), 'capability' => $view),
-                        array('id' => 'olama_transportation.settings', 'type' => 'tab', 'label' => __('Settings', 'olama-transportation'), 'capability' => $manage),
+                        array('id' => 'olama_transportation.reports', 'type' => 'tab', 'label' => __('Reports', 'olama-transportation'), 'capability' => $tabs['reports']),
+                        array(
+                            'id' => 'olama_transportation.settings',
+                            'type' => 'tab',
+                            'label' => __('Settings', 'olama-transportation'),
+                            'capability' => $tabs['settings'],
+                            'actions' => array(
+                                array('id' => 'olama_transportation.settings.manage', 'type' => 'action', 'label' => __('Manage transportation settings', 'olama-transportation'), 'capability' => $tabs['settings']),
+                            ),
+                        ),
                     ),
                 ),
             ),

@@ -121,8 +121,8 @@ class Olama_Transportation_Admin
             wp_die(esc_html__('Unauthorized access', 'olama-transportation'));
         }
 
-        $active_tab = isset($_GET['tab']) ? sanitize_key(wp_unslash($_GET['tab'])) : 'overview';
-        $allowed_tabs = array(
+        $requested_tab = isset($_GET['tab']) ? sanitize_key(wp_unslash($_GET['tab'])) : '';
+        $tab_labels = array(
             'overview'    => Olama_Transportation_I18n::translate('Overview'),
             'buses'       => Olama_Transportation_I18n::translate('Buses'),
             'areas'       => Olama_Transportation_I18n::translate('Trips'),
@@ -136,9 +136,19 @@ class Olama_Transportation_Admin
             'settings'    => Olama_Transportation_I18n::translate('Settings'),
         );
 
-        if (!isset($allowed_tabs[$active_tab])) {
-            $active_tab = 'buses';
+        $allowed_tabs = array();
+        foreach (Olama_Transportation_Plugin::tab_capabilities() as $tab => $capability) {
+            if (isset($tab_labels[$tab]) && Olama_School_Permissions::can($capability)) {
+                $allowed_tabs[$tab] = $tab_labels[$tab];
+            }
         }
+        if (!$allowed_tabs) {
+            wp_die(esc_html__('You do not have access to any Transportation section.', 'olama-transportation'), 403);
+        }
+        if ($requested_tab && !isset($allowed_tabs[$requested_tab])) {
+            wp_die(esc_html__('You do not have access to this Transportation section.', 'olama-transportation'), 403);
+        }
+        $active_tab = $requested_tab ?: array_key_first($allowed_tabs);
 
         $buses = Olama_Transportation_Bus::get_buses();
         $drivers = array();
@@ -274,12 +284,21 @@ class Olama_Transportation_Admin
             ),
         ));
 
-        $tab = isset($_GET['tab']) ? sanitize_key(wp_unslash($_GET['tab'])) : 'overview';
+        $tab = isset($_GET['tab']) ? sanitize_key(wp_unslash($_GET['tab'])) : '';
+        if (!$tab) {
+            foreach (Olama_Transportation_Plugin::tab_capabilities() as $candidate => $capability) {
+                if (Olama_School_Permissions::can($capability)) {
+                    $tab = $candidate;
+                    break;
+                }
+            }
+        }
         $dual_year_id = isset($_GET['academic_year_id']) ? absint($_GET['academic_year_id']) : 0;
         if (!$dual_year_id) {
             $dual_active_year = Olama_School_Academic::get_active_year();
             $dual_year_id = $dual_active_year ? absint($dual_active_year->id) : 0;
         }
+        $selected_year_id = $dual_year_id;
         if ($tab === 'overview') {
             $path = OLAMA_TRANSPORTATION_PATH . 'assets/js/dashboard.js';
             wp_enqueue_script('olama-transportation-dashboard', OLAMA_TRANSPORTATION_URL . 'assets/js/dashboard.js', array('jquery'), $this->asset_version($path), true);
