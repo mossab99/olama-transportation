@@ -512,3 +512,5 @@
 @media(max-width:1380px){.olama-dashboard-kpis{grid-template-columns:repeat(3,1fr)}.olama-dashboard-lower-grid{grid-template-columns:1fr 1fr}.olama-dashboard-changes{grid-column:1/-1}}
 @media(max-width:960px){.olama-dashboard-hero{grid-template-columns:1fr auto}.olama-dashboard-year{grid-column:1/-1}.olama-dashboard-trip-filters{flex-wrap:wrap}.olama-dashboard-lower-grid{grid-template-columns:1fr}.olama-dashboard-changes{grid-column:auto}.olama-dashboard-quick-actions{position:static;flex-wrap:wrap}.olama-dashboard-quick-actions>strong{flex-basis:100%}}
 @media(max-width:620px){.olama-dashboard-hero{grid-template-columns:1fr;padding:18px}.olama-dashboard-readiness{width:100%;height:auto;padding:12px}.olama-dashboard-kpis{grid-template-columns:1fr 1fr}.olama-dashboard-panel-head{align-items:flex-start;flex-direction:column}.olama-dashboard-trip-filters>*{width:100%;max-width:none!important}.olama-dashboard-segmented .button{flex:1}.olama-dashboard-quick-actions .button{flex:1;text-align:center}}
+
+.olama-family-move-preview .is-warning { color: #996800; font-weight: 600; }

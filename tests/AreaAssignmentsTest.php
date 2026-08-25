@@ -319,11 +319,10 @@ class Olama_Transportation_Area_Assignments_Test extends WP_UnitTestCase
             'source_trip_id'=>$source['id'], 'destination_trip_id'=>$destination['id'], 'family_uids'=>array($moving['family_uid']),
         ));
 
-        $this->assertWPError($result);
-        $this->assertSame('family_move_bus_capacity', $result->get_error_code());
-        $this->assertStringContainsString('1 student', $result->get_error_message());
-        $this->assertSame(2, Olama_Transportation_Shared_Trips::get($source['id'])['student_count']);
-        $this->assertSame(1, Olama_Transportation_Shared_Trips::get($destination['id'])['student_count']);
+        $this->assertFalse(is_wp_error($result));
+        $this->assertStringContainsString('1 student', $result['capacity_warnings'][0]);
+        $this->assertSame(0, Olama_Transportation_Shared_Trips::get($source['id'])['student_count']);
+        $this->assertSame(3, Olama_Transportation_Shared_Trips::get($destination['id'])['student_count']);
     }
 
     public function test_published_shared_trip_can_return_to_draft_for_editing()

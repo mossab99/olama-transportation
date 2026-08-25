@@ -237,9 +237,10 @@
         });
         var students = families.reduce(function (total, family) { return total + Number(family.student_count || 0); }, 0);
         var after = Number(destination.student_count || 0) + students;
-        if (after > Number(destination.bus_capacity || 0)) return {valid:false,message:'The move would exceed the destination bus capacity by ' + (after - Number(destination.bus_capacity)) + ' students.',families:families,students:students,after:after,missingAreaNames:missingAreaNames};
-        if (after > Number(destination.planning_limit || 0)) return {valid:false,message:'The move would exceed the destination planning limit by ' + (after - Number(destination.planning_limit)) + ' students.',families:families,students:students,after:after,missingAreaNames:missingAreaNames};
-        return {valid:true,message:'Ready to move',families:families,students:students,after:after,remaining:Number(destination.bus_capacity)-after,missingAreaNames:missingAreaNames};
+        var warnings = [];
+        if (after > Number(destination.bus_capacity || 0)) warnings.push('The move exceeds the destination bus capacity by ' + (after - Number(destination.bus_capacity)) + ' students.');
+        if (after > Number(destination.planning_limit || 0)) warnings.push('The move exceeds the destination planning limit by ' + (after - Number(destination.planning_limit)) + ' students.');
+        return {valid:true,message:warnings.length ? 'Ready to move with capacity warnings.' : 'Ready to move',warnings:warnings,families:families,students:students,after:after,remaining:Number(destination.bus_capacity)-after,missingAreaNames:missingAreaNames};
     }
 
     function stageMove(fromSide) {
@@ -249,7 +250,10 @@
         }
         pending = {fromSide:fromSide,toSide:toSide,sourceTripId:sides[fromSide].tripId,destinationTripId:sides[toSide].tripId,familyUids:selectedFamilies(fromSide).map(function (family) { return family.family_uid; }),check:check};
         var names = selectedFamilies(fromSide).map(function (family) { return '#' + (family.oracle_family_id || family.family_name); }).join(', ');
-        $('#family-move-preview').html('<p><strong>' + pending.familyUids.length + ' ' + (pending.familyUids.length === 1 ? 'family' : 'families') + ' · ' + Number(check.students || 0) + ' students</strong><br>' + esc(names) + '<br><span class="' + (check.valid ? 'is-valid' : 'is-invalid') + '">' + esc(check.valid ? 'Destination after move: ' + check.after + '/' + sides[toSide].trip.bus_capacity + ' seats · ' + check.remaining + ' remaining. Routes will need recalculation.' : check.message) + '</span></p>');
+        var resultClass = !check.valid ? 'is-invalid' : (check.warnings && check.warnings.length ? 'is-warning' : 'is-valid');
+        var resultMessage = check.valid ? 'Destination after move: ' + check.after + '/' + sides[toSide].trip.bus_capacity + ' seats · ' + check.remaining + ' remaining. Routes will need recalculation.' : check.message;
+        if (check.warnings && check.warnings.length) resultMessage += ' Warning: ' + check.warnings.join(' ');
+        $('#family-move-preview').html('<p><strong>' + pending.familyUids.length + ' ' + (pending.familyUids.length === 1 ? 'family' : 'families') + ' · ' + Number(check.students || 0) + ' students</strong><br>' + esc(names) + '<br><span class="' + resultClass + '">' + esc(resultMessage) + '</span></p>');
         $('#family-move-cancel').prop('disabled', false);
         $('#family-move-apply').prop('disabled', !check.valid || !config.canManage);
         return check.valid;

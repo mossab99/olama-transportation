@@ -173,11 +173,12 @@ class Olama_Transportation_Family_Move
         $destination_count = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(DISTINCT student_uid) FROM {$members_table} WHERE trip_id=%d", $destination_id));
         $moving_count = count(array_unique(array_column($moving_rows, 'student_uid')));
         $after_count = $destination_count + $moving_count;
+        $capacity_warnings = array();
         if ($after_count > (int) $destination['bus_capacity']) {
-            return self::rollback_error('family_move_bus_capacity', sprintf(__('The move would exceed the destination bus capacity by %d students.', 'olama-transportation'), $after_count - (int) $destination['bus_capacity']), 409);
+            $capacity_warnings[] = sprintf(__('The move exceeds the destination bus capacity by %d students.', 'olama-transportation'), $after_count - (int) $destination['bus_capacity']);
         }
         if ($after_count > (int) $destination['planning_limit']) {
-            return self::rollback_error('family_move_trip_limit', sprintf(__('The move would exceed the destination planning limit by %d students.', 'olama-transportation'), $after_count - (int) $destination['planning_limit']), 409);
+            $capacity_warnings[] = sprintf(__('The move exceeds the destination planning limit by %d students.', 'olama-transportation'), $after_count - (int) $destination['planning_limit']);
         }
 
         $now = current_time('mysql', true);
@@ -241,7 +242,8 @@ class Olama_Transportation_Family_Move
             'family_uids'=>$family_uids, 'student_count'=>$moving_count, 'added_area_ids'=>array(),
         ), array(
             'source_trip_id'=>$source_id, 'destination_trip_id'=>$destination_id,
-            'family_uids'=>$family_uids, 'student_count'=>$moving_count, 'added_area_ids'=>$added_area_ids, 'reason'=>$reason,
+            'family_uids'=>$family_uids, 'student_count'=>$moving_count, 'added_area_ids'=>$added_area_ids,
+            'capacity_warnings'=>$capacity_warnings, 'reason'=>$reason,
         ));
         $wpdb->query('COMMIT');
 
@@ -250,6 +252,7 @@ class Olama_Transportation_Family_Move
             'moved_family_count' => count($family_uids),
             'moved_student_count' => $moving_count,
             'added_area_ids' => $added_area_ids,
+            'capacity_warnings' => $capacity_warnings,
             'source_trip' => self::trip($source_id),
             'destination_trip' => self::trip($destination_id),
             'routes_need_recalculation' => true,
