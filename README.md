@@ -27,6 +27,12 @@ The effective capacity is positive `planning_capacity`, otherwise `passenger_cap
 
 Oracle ERP is read only through Olama Oracle Sync and Olama Core. Transportation never connects to Oracle. Core region refresh is idempotent, preserves local colors, notes and boundaries, and deactivates only missing Core-mapped areas. Unmapped local planning areas remain active. Core backfill fills only unassigned, non-manually-cleared family stops and records `area_assignment_source=core`. Manual classification or clearing records the actor/time and is not overwritten. Coordinate saves preserve all existing area metadata.
 
+## Reporting model
+
+Reports keep subscription, academic registration, and trip assignment as separate facts. The canonical subscribed population is the distinct active student set in `wp_olama_core_student_transportation` for the selected study year. Walking students are academically registered students absent from that active set. Shared-trip membership is then joined independently for arrival and departure; it never creates a transportation subscription and it never makes an unsubscribed student disappear from the walking report.
+
+Direction-specific reports classify each subscribed student as assigned or unassigned for that direction. The combined report classifies students as assigned in both directions, assigned in one direction, or not assigned. Assignment-gap scopes distinguish a missing arrival, missing departure, either missing direction, and no trip in either direction. Report diagnostics expose collapsed duplicate subscription rows, missing Core identities/academic registrations, stale trip members that are no longer subscribed, and multiple assignments in one direction.
+
 ## Database changes in 2.4.1
 
 - Family stops add `area_assignment_source`, `area_assigned_by`, and `area_assigned_at`.

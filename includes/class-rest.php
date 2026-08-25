@@ -298,9 +298,14 @@ class Olama_Transportation_REST
     public function family_move_context(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Family_Move::context($request->get_param('academic_year_id'), $request->get_param('direction') ?: 'morning')); }
     public function family_move_trip(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Family_Move::trip($request['id'])); }
     public function move_families(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Family_Move::move($request->get_json_params() ?: $request->get_params())); }
-    public function school_level_report(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Shared_Trips::school_report($request->get_param('academic_year_id'), $request->get_param('direction') ?: 'morning', $request->get_param('grade') ?: '', $request->get_param('section') ?: '', $request->get_param('area_id') ?: '', $request->get_param('trip_id') ?: '', $request->get_param('transport_status') ?: 'all', $request->get_param('school_filter') ?: 'all')); }
-    public function family_report(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Shared_Trips::family_report($request->get_param('academic_year_id'), $request->get_param('search') ?: '')); }
-    public function unassigned_report(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Shared_Trips::unassigned_report($request->get_param('academic_year_id'))); }
+    public function school_level_report(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Reports::school_report($request->get_param('academic_year_id'), array(
+        'population'=>$request->get_param('population') ?: 'transportation', 'direction'=>$request->get_param('direction') ?: 'morning',
+        'grade'=>$request->get_param('grade') ?: '', 'section'=>$request->get_param('section') ?: '', 'area_id'=>$request->get_param('area_id') ?: '',
+        'trip_id'=>$request->get_param('trip_id') ?: '', 'assignment_status'=>$request->get_param('assignment_status') ?: ($request->get_param('transport_status') ?: 'all'),
+        'school_filter'=>$request->get_param('school_filter') ?: 'all',
+    ))); }
+    public function family_report(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Reports::family_report($request->get_param('academic_year_id'), $request->get_param('search') ?: '')); }
+    public function unassigned_report(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Reports::unassigned_report($request->get_param('academic_year_id'), $request->get_param('scope') ?: 'none')); }
     public function save_shared_trip_students(WP_REST_Request $request) { $input=$request->get_json_params() ?: $request->get_params(); return $this->respond(Olama_Transportation_Shared_Trips::save_area_students($request['id'], $input['major_area_id'] ?? 0, $input['student_uids'] ?? array())); }
     public function save_shared_trip_areas(WP_REST_Request $request) { $input=$request->get_json_params() ?: $request->get_params(); return $this->respond(Olama_Transportation_Shared_Trips::save_areas($request['id'], $input['area_ids'] ?? array())); }
     public function build_shared_trip_queue(WP_REST_Request $request) { return $this->respond(Olama_Transportation_Shared_Trips::build_queue($request['id'])); }

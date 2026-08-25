@@ -35,6 +35,10 @@ The resolver returns assignment status, location validity, direction student cou
 
 Oracle Area and Planning Area are deliberately separate. Oracle Area is read-only geography from Core. Planning Area is Transportation-owned operational classification. Existing boundary GeoJSON may be rendered as reference only and never determines family membership.
 
+## Reports
+
+`Olama_Transportation_Reports` is the single read model for transportation, walking, family-search, and assignment-gap reports. Active distinct Core transportation rows define subscription; academic student-year rows define registration; active draft/published shared trips define arrival and departure assignments. Report filters operate after those facts have been resolved, so an area or trip filter cannot silently redefine subscription. The reporting API returns source totals and integrity diagnostics with every result.
+
 ## Capacity and concurrency
 
 Capacity is scoped to academic year + direction + bus + trip. Positive `planning_capacity` overrides `passenger_capacity`. Preview excludes the area's current assignment when editing, sums all other areas on the selected trip, adds current area demand, and returns capacity, remaining seats, utilization, status, and a hash. Save repeats the same calculation under locks; a changed hash produces HTTP 409 and updated capacity. Direction demand counts distinct active enrollment students with the matching direction flag. The selected bus row is the serialization lock for concurrent saves, so requests targeting different areas on the same physical bus cannot both validate from the same stale capacity state. Assignment rows and competing trip rows are also locked. Moving families later can surface a `capacity_problem` dynamically; the system does not silently split an area or mutate student records.

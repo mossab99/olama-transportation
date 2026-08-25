@@ -676,8 +676,17 @@ class Olama_Transportation_Shared_Trips
         );
     }
 
-    /** Return the school-level transportation report, optionally filtered by grade and section. */
+    /** @deprecated Reports now use the canonical Core subscription read model. */
     public static function school_report($academic_year_id, $direction, $grade = '', $section = '', $area_id = '', $trip_id = '', $transport_status = 'all', $school_filter = 'all')
+    {
+        return Olama_Transportation_Reports::school_report($academic_year_id, array(
+            'population'=>'transportation', 'direction'=>$direction, 'grade'=>$grade, 'section'=>$section,
+            'area_id'=>$area_id, 'trip_id'=>$trip_id, 'assignment_status'=>$transport_status, 'school_filter'=>$school_filter,
+        ));
+    }
+
+    /** Kept temporarily as implementation history for compatibility review. */
+    private static function legacy_school_report($academic_year_id, $direction, $grade = '', $section = '', $area_id = '', $trip_id = '', $transport_status = 'all', $school_filter = 'all')
     {
         global $wpdb;
         $year = absint($academic_year_id);
@@ -746,6 +755,12 @@ class Olama_Transportation_Shared_Trips
 
     public static function family_report($academic_year_id, $search)
     {
+        return Olama_Transportation_Reports::family_report($academic_year_id, $search);
+    }
+
+    /** Kept temporarily as implementation history for compatibility review. */
+    private static function legacy_family_report($academic_year_id, $search)
+    {
         global $wpdb;
         $search = trim(sanitize_text_field($search));
         if ($search === '') return array('items'=>array(), 'total'=>0);
@@ -789,6 +804,12 @@ class Olama_Transportation_Shared_Trips
     }
 
     public static function unassigned_report($academic_year_id)
+    {
+        return Olama_Transportation_Reports::unassigned_report($academic_year_id, 'none');
+    }
+
+    /** Kept temporarily as implementation history for compatibility review. */
+    private static function legacy_unassigned_report($academic_year_id)
     {
         global $wpdb;
         $year = absint($academic_year_id); $study = preg_replace('/\s*([\/\-])\s*/', '$1', Olama_Transportation_Bus::study_year($year)); $alternate = strpos($study, '/') !== false ? str_replace('/', '-', $study) : str_replace('-', '/', $study);

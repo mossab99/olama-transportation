@@ -66,6 +66,7 @@ final class Olama_Transportation_Plugin
         require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-family-area-assignments.php';
         require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-area-trip-assignments.php';
         require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-areas-workspace.php';
+        require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-reports.php';
         require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-shared-trips.php';
         require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-family-move.php';
         require_once OLAMA_TRANSPORTATION_PATH . 'includes/class-routes.php';
