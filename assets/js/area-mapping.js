@@ -40,8 +40,49 @@
     function renderAreas() {
         var areas = state.data.areas || [], select = el('planner-area'), selected = select.value, body = el('area-mapping-body');
         select.innerHTML = ''; option(select, '', olamaPlanner.i18n.allAreas); (state.data.area_options || []).forEach(function (area) { option(select, area.id, area.name); }); select.value = selected;
-        body.innerHTML = ''; if (!areas.length) { var empty = body.insertRow().insertCell(); empty.colSpan = 6; empty.appendChild(node(olamaPlanner.i18n.noAreas)); return; }
-        areas.forEach(function (area) { var row = body.insertRow(), name = row.insertCell(), label = document.createElement('span'), dot = document.createElement('span'); label.className = 'olama-area-name'; dot.className = 'olama-area-color-dot'; dot.style.setProperty('--area-color', color(area)); label.append(dot, node(area.name)); name.appendChild(label); row.insertCell().appendChild(node(String(area.family_count || 0) + ' (' + String(area.student_count || 0) + ' students)')); row.insertCell().appendChild(node(area.transportation_student_count || 0)); row.insertCell().appendChild(node(area.transport_kg_g1_count || 0)); row.insertCell().appendChild(node(area.non_transportation_student_count || 0)); var actions = row.insertCell(); [['all',olamaPlanner.i18n.mapAll||'Map all students'],['transportation',olamaPlanner.i18n.transportationMap||'Transportation map'],['walking',olamaPlanner.i18n.walkingMap||'Walking map']].forEach(function (item) { var button=document.createElement('button'); button.type='button'; button.className='button button-small'; button.appendChild(node(item[1])); button.addEventListener('click',function(event){event.stopPropagation();focusArea(area.id,item[0]);}); actions.appendChild(button); }); row.addEventListener('click', function (event) { if (!event.target.closest('button')) focusArea(area.id, 'all'); }); });
+        var totals = areas.reduce(function (sum, area) {
+            sum.families += Number(area.family_count || 0);
+            sum.students += Number(area.student_count || 0);
+            sum.transportation += Number(area.transportation_student_count || 0);
+            sum.kgG1 += Number(area.transport_kg_g1_count || 0);
+            sum.walking += Number(area.non_transportation_student_count || 0);
+            return sum;
+        }, {families:0, students:0, transportation:0, kgG1:0, walking:0});
+        el('coverage-total-areas').textContent = areas.length;
+        el('coverage-total-families').textContent = totals.families;
+        el('coverage-total-students').textContent = totals.students;
+        el('coverage-total-transportation').textContent = totals.transportation;
+        el('coverage-total-kg-g1').textContent = totals.kgG1;
+        el('coverage-total-walking').textContent = totals.walking;
+
+        body.innerHTML = '';
+        if (!areas.length) { var empty = body.insertRow().insertCell(); empty.colSpan = 6; empty.className = 'olama-coverage-empty'; empty.appendChild(node(olamaPlanner.i18n.noAreas)); return; }
+        areas.forEach(function (area) {
+            var row = body.insertRow();
+            var name = row.insertCell(), identity = document.createElement('div'), dot = document.createElement('span'), nameText = document.createElement('strong');
+            identity.className = 'olama-coverage-area'; dot.className = 'olama-area-color-dot'; dot.style.setProperty('--area-color', color(area));
+            nameText.appendChild(node(area.name)); identity.append(dot, nameText);
+            if (area.code) { var code = document.createElement('small'); code.appendChild(node(area.code)); identity.appendChild(code); }
+            name.appendChild(identity);
+
+            function metric(value, label, className, secondary) {
+                var cell = row.insertCell(), card = document.createElement('div'), count = document.createElement('strong'), caption = document.createElement('span');
+                card.className = 'olama-coverage-metric ' + className; count.appendChild(node(Number(value || 0))); caption.appendChild(node(label)); card.append(count, caption);
+                if (secondary) { var detail = document.createElement('small'); detail.appendChild(node(secondary)); card.appendChild(detail); }
+                cell.appendChild(card);
+            }
+            metric(area.family_count, olamaPlanner.i18n.families || 'Families', 'is-families', Number(area.student_count || 0) + ' ' + (olamaPlanner.i18n.students || 'students'));
+            metric(area.transportation_student_count, olamaPlanner.i18n.transportationMode || 'Transportation', 'is-transportation');
+            metric(area.transport_kg_g1_count, 'KG + G1', 'is-kg');
+            metric(area.non_transportation_student_count, olamaPlanner.i18n.walkingMode || 'Walking', 'is-walking');
+
+            var actions = row.insertCell(), actionGroup = document.createElement('div'); actions.className = 'olama-coverage-actions-cell'; actionGroup.className = 'olama-coverage-actions';
+            [['all',olamaPlanner.i18n.mapAll||'Map all students','dashicons-location-alt'],['transportation',olamaPlanner.i18n.transportationMap||'Transportation map','dashicons-car'],['walking',olamaPlanner.i18n.walkingMap||'Walking map','dashicons-universal-access-alt']].forEach(function (item) {
+                var button=document.createElement('button'), icon=document.createElement('span'), label=document.createElement('span'); button.type='button'; button.className='button olama-coverage-action is-'+item[0]; button.title=item[1]; button.setAttribute('aria-label',item[1]); icon.className='dashicons '+item[2]; icon.setAttribute('aria-hidden','true'); label.appendChild(node(item[1])); button.append(icon,label); button.addEventListener('click',function(event){event.stopPropagation();focusArea(area.id,item[0]);}); actionGroup.appendChild(button);
+            });
+            actions.appendChild(actionGroup);
+            row.addEventListener('click', function (event) { if (!event.target.closest('button')) focusArea(area.id, 'all'); });
+        });
     }
 
     function renderMap() {
