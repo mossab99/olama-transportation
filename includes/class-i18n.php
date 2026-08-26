@@ -155,7 +155,7 @@ final class Olama_Transportation_I18n
             'families missing locations' => 'عائلات دون مواقع',
             'Load + Time + Action' => 'الحمولة + الوقت + الإجراء',
             'Trip Operations Board' => 'لوحة عمليات الجولات',
-            'Critical and incomplete trips are shown first. Estimated duration appears after route optimization.' => 'تظهر الجولات الحرجة وغير المكتملة أولاً. تظهر المدة التقديرية بعد تحسين المسار.',
+            'Trips are ordered by highest load first. Estimated duration appears after route optimization.' => 'ترتب الجولات حسب الحمولة من الأعلى إلى الأقل. تظهر المدة التقديرية بعد تحسين المسار.',
             'Open trip planning' => 'فتح تخطيط الجولات',
             'Both' => 'كلاهما',
             'All statuses' => 'جميع الحالات',

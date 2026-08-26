@@ -157,9 +157,11 @@ class Olama_Transportation_Dashboard
 
     private static function sort_trips($a, $b)
     {
-        $priority = array('critical'=>0,'incomplete'=>1,'stale'=>2,'long'=>3,'crowded'=>4,'ready'=>5,'published'=>6);
-        $comparison = ($priority[$a['operational_status']] ?? 9) <=> ($priority[$b['operational_status']] ?? 9);
-        return $comparison ?: strnatcasecmp($a['name'], $b['name']);
+        $comparison = (float)($b['occupancy'] ?? 0) <=> (float)($a['occupancy'] ?? 0);
+        if ($comparison) return $comparison;
+
+        $comparison = (int)($b['student_count'] ?? 0) <=> (int)($a['student_count'] ?? 0);
+        return $comparison ?: strnatcasecmp((string)($a['name'] ?? ''), (string)($b['name'] ?? ''));
     }
 
     private static function exceptions($counts)
