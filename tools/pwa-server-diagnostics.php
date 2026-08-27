@@ -207,7 +207,9 @@ $discovered = olama_pwa_extract_urls($home_body, $target_url);
 
 $common_paths = array(
     '/service-worker.js', '/serviceworker.js', '/sw.js', '/wp-service-worker.js',
-    '/pwa-sw.js', '/manifest.json', '/manifest.webmanifest', '/offline/',
+    '/pwa-sw.js', '/wp.serviceworker', '/?wp_service_worker=1',
+    '/manifest.json', '/manifest.webmanifest', '/wp.webmanifest',
+    '/?wp_web_app_manifest=1', '/offline/',
 );
 foreach ($common_paths as $path) {
     $url = home_url($path);
