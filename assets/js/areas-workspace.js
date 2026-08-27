@@ -41,9 +41,17 @@
             '<div class="olama-trip-card-warnings">' + warning('trip limit',trip.trip_excess) + warning('bus capacity',trip.bus_excess) + '</div></article>';
     }
     function render() {
-        var trips = data.shared_trips || [];
-        $('#olama-trip-board-list').html(trips.length ? trips.map(tripCard).join('') : '<div class="olama-empty-trip-state"><strong>No trips created yet.</strong><span>Create a trip first, then assign its bus, areas, and students.</span></div>');
-        $('#olama-trip-board-summary').text(trips.length + ' trip' + (trips.length === 1 ? '' : 's'));
+        if (!data) return;
+        var allTrips = data.shared_trips || [];
+        var search = ($('#olama-trip-name-search').val() || '').toLocaleLowerCase().trim();
+        var trips = search ? allTrips.filter(function (trip) {
+            return String(trip.name || '').toLocaleLowerCase().indexOf(search) !== -1;
+        }) : allTrips;
+        var emptyState = search && allTrips.length
+            ? '<div class="olama-empty-trip-state"><strong>' + esc($('.olama-trip-board').data('no-search-results')) + '</strong></div>'
+            : '<div class="olama-empty-trip-state"><strong>No trips created yet.</strong><span>Create a trip first, then assign its bus, areas, and students.</span></div>';
+        $('#olama-trip-board-list').html(trips.length ? trips.map(tripCard).join('') : emptyState);
+        $('#olama-trip-board-summary').text(search ? trips.length + ' / ' + allTrips.length : allTrips.length + ' trip' + (allTrips.length === 1 ? '' : 's'));
         var rows = (data.areas || []).map(function (area) {
             var assigned = area.shared_trips && area.shared_trips.length ? '<ul class="olama-area-trip-list">' + area.shared_trips.map(function(trip){return '<li><button type="button" class="button-link olama-open-trip" data-trip="'+trip.id+'">'+esc(trip.name)+'</button><small>'+trip.area_student_count+' students · '+esc(trip.bus_number ? 'Bus '+trip.bus_number+' · '+tripRunLabel($('#areas-direction').val(),trip.bus_trip_number) : 'Bus unassigned')+'</small></li>';}).join('') + '</ul>' : '<em>Not attached to a trip.</em>';
             return '<tr data-area="'+area.id+'"><td class="olama-area-identity"><span class="olama-area-swatch" style="background:'+esc(area.color)+'"></span><strong>'+esc(area.name)+'</strong><small>'+esc(area.code)+'</small></td>'+
@@ -224,6 +232,7 @@
         if(linkedDirection==='morning'||linkedDirection==='afternoon')$('#areas-direction').val(linkedDirection);
         load().then(function(){if(linkedTrip)openTrip(linkedTrip);});
         $('#areas-year,#areas-direction').on('change',load);
+        $('#olama-trip-name-search').on('input',render);
         $('#areas-refresh-core').on('click',function(){api('core/refresh-areas',{method:'POST',body:'{}'}).then(function(){return load('Areas refreshed from Olama Core.');}).catch(function(error){feedback(error.message,true);});});
         $('#olama-create-trip-plan').on('click',createTrip);
         $(document).on('click','.olama-open-trip',function(event){event.stopPropagation();openTrip(Number($(this).data('trip')));});

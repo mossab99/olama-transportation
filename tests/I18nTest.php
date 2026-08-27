@@ -23,6 +23,7 @@ class Olama_Transportation_I18n_Test extends WP_UnitTestCase
         $this->assertSame('rtl', Olama_Transportation_I18n::direction());
         $this->assertSame('إعدادات المواصلات', Olama_Transportation_I18n::translate('Transportation Settings'));
         $this->assertSame('تقرير المواصلات', Olama_Transportation_I18n::translate('Transportation report'));
+        $this->assertSame('البحث باسم الرحلة', Olama_Transportation_I18n::translate('Search trip name'));
     }
 
     public function test_invalid_language_falls_back_to_english()
