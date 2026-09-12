@@ -194,7 +194,7 @@
         if(!container||typeof L==='undefined')return;
         var nodes=wizard.trip.queue||[],valid=nodes.filter(validCoordinates);
         queueMap=L.map(container,{scrollWheelZoom:false}).setView([31.9539,35.9106],12);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap contributors',maxZoom:19}).addTo(queueMap);
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',maxZoom:19,referrerPolicy:'strict-origin-when-cross-origin'}).addTo(queueMap);
         var bounds=[];
         valid.forEach(function(node){
             var index=nodes.indexOf(node)+1,isSchool=node.node_type==='school';

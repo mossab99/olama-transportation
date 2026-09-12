@@ -311,8 +311,8 @@ class Olama_Transportation_Admin
                 'restUrl' => esc_url_raw(rest_url('olama-transportation/v1/')),
                 'restNonce' => wp_create_nonce('wp_rest'),
                 'canManage' => Olama_School_Permissions::can('olama_manage_transport_buses'),
-                'tileUrl' => 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                'tileAttribution' => '&copy; OpenStreetMap contributors',
+                'tileUrl' => 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                'tileAttribution' => '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
                 'i18n' => array(
                     'assigned' => Olama_Transportation_I18n::translate('Assigned'), 'edit' => Olama_Transportation_I18n::translate('Edit'),
                     'assignEdit' => Olama_Transportation_I18n::translate('Assign/Edit Bus Trip'),
@@ -429,7 +429,7 @@ class Olama_Transportation_Admin
             wp_localize_script('olama-family-move', 'olamaFamilyMove', array(
                 'restUrl'=>esc_url_raw(rest_url('olama-transportation/v1/')), 'restNonce'=>wp_create_nonce('wp_rest'),
                 'canManage'=>Olama_School_Permissions::can('olama_manage_transport_buses'), 'year'=>(int)$selected_year_id,
-                'tileUrl'=>'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', 'tileAttribution'=>'&copy; OpenStreetMap contributors',
+                'tileUrl'=>'https://tile.openstreetmap.org/{z}/{x}/{y}.png', 'tileAttribution'=>'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
             ));
         } elseif ($tab === 'areas') {
             $trip_companions = Olama_Transportation_Bus::get_available_companions();

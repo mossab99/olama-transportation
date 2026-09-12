@@ -8,7 +8,7 @@
     var state = { data: null, mapData: null, markers: [], controller: null, activeAreaId: null, mapScope: 'transportation' };
     var map = L.map('olama-planning-map', { scrollWheelZoom: false, doubleClickZoom: false, touchZoom: false, boxZoom: false, keyboard: false }).setView(school, 12);
     var markerLayer = L.layerGroup().addTo(map);
-    L.tileLayer(olamaPlanner.tileUrl, { attribution: olamaPlanner.tileAttribution, maxZoom: 19 }).addTo(map);
+    L.tileLayer(olamaPlanner.tileUrl, { attribution: olamaPlanner.tileAttribution, maxZoom: 19, referrerPolicy: 'strict-origin-when-cross-origin' }).addTo(map);
 
     function el(id) { return document.getElementById(id); }
     function node(value) { return document.createTextNode(value === null || value === undefined ? '' : String(value)); }

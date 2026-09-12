@@ -169,7 +169,7 @@
         var state = sides[side], trip = state.trip, element = document.getElementById('family-move-map-' + side);
         if (!trip || !element || typeof L === 'undefined') return;
         var map = L.map(element, {scrollWheelZoom:false, doubleClickZoom:false, boxZoom:false, touchZoom:false, keyboard:false, zoomControl:true}).setView([31.9539,35.9106], 12);
-        L.tileLayer(config.tileUrl, {attribution:config.tileAttribution,maxZoom:19}).addTo(map);
+        L.tileLayer(config.tileUrl, {attribution:config.tileAttribution,maxZoom:19,referrerPolicy:'strict-origin-when-cross-origin'}).addTo(map);
         state.map = map; state.markers = {}; state.bounds = [];
         var line = [];
         (trip.queue || []).forEach(function (node) {

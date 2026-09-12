@@ -6,7 +6,7 @@
     var state = { data:null, mapData:null, markers:[], page:1, sort:'priority', order:'asc', preview:null, previewKey:'', editing:null, selectedFamilies:new Set(), familyArea:null, controller:null, sequence:0 };
     var map = L.map('olama-planning-map').setView([31.9539,35.9106],10);
     var markerLayer = L.layerGroup().addTo(map);
-    L.tileLayer(olamaPlanner.tileUrl,{attribution:olamaPlanner.tileAttribution,maxZoom:19}).addTo(map);
+    L.tileLayer(olamaPlanner.tileUrl,{attribution:olamaPlanner.tileAttribution,maxZoom:19,referrerPolicy:'strict-origin-when-cross-origin'}).addTo(map);
     function el(id){ return document.getElementById(id); }
     function t(value){ return document.createTextNode(value === null || value === undefined ? '' : String(value)); }
     function option(select,value,label){ var node=document.createElement('option'); node.value=value; node.appendChild(t(label)); select.appendChild(node); }
